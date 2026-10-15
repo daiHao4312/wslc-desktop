@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:WslcDesktop.Models"
     mc:Ignorable="d">
 
     <Grid Padding="24" RowSpacing="16">
@@ -124,12 +125,73 @@
                                 PlaceholderText="MYSQL_ROOT_PASSWORD=secret"
                                 TextChanged="Field_Changed" />
 
-                            <TextBox
-                                x:Name="VolumesBox"
-                                AcceptsReturn="True"
-                                Header="卷挂载（每行一条：卷名或主机目录:容器路径）"
-                                PlaceholderText="mysql-data:/var/lib/mysql"
-                                TextChanged="Field_Changed" />
+                            <!--
+                                目录映射逐行编辑：本机侧可以点「浏览」直接从资源管理器选文件夹
+                                （非打包 WinUI 3 必须把 picker 绑到窗口 HWND，见 BrowseHostFolder_Click），
+                                也可以直接手输命名卷；容器侧永远是手输——那是镜像内的路径，本机没有对应物。
+                            -->
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    FontSize="12"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="目录映射（本机侧可点「浏览」选文件夹，也可直接手输命名卷；容器侧填镜像内路径）"
+                                    TextWrapping="Wrap" />
+
+                                <ItemsControl ItemsSource="{x:Bind VolumeRows}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="models:VolumeRow">
+                                            <Grid Margin="0,0,0,8" ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBox
+                                                    Grid.Column="0"
+                                                    PlaceholderText="本机目录或卷名"
+                                                    Tag="{x:Bind}"
+                                                    Text="{x:Bind HostPath, Mode=OneWay}"
+                                                    TextChanged="VolumeHost_Changed" />
+
+                                                <Button
+                                                    Grid.Column="1"
+                                                    Click="BrowseHostFolder_Click"
+                                                    Tag="{x:Bind}"
+                                                    ToolTipService.ToolTip="从资源管理器选择本机文件夹">
+                                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                                        <FontIcon FontSize="12" Glyph="&#xE8B7;" />
+                                                        <TextBlock Text="浏览" />
+                                                    </StackPanel>
+                                                </Button>
+
+                                                <TextBox
+                                                    Grid.Column="2"
+                                                    PlaceholderText="镜像内路径，如 /data"
+                                                    Tag="{x:Bind}"
+                                                    Text="{x:Bind ContainerPath, Mode=OneWay}"
+                                                    TextChanged="VolumeContainer_Changed" />
+
+                                                <Button
+                                                    Grid.Column="3"
+                                                    Click="RemoveVolume_Click"
+                                                    Tag="{x:Bind}"
+                                                    ToolTipService.ToolTip="删除这条映射">
+                                                    <FontIcon FontSize="12" Glyph="&#xE74D;" />
+                                                </Button>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Button HorizontalAlignment="Left" Click="AddVolume_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon FontSize="12" Glyph="&#xE710;" />
+                                        <TextBlock Text="添加映射" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
 
                             <ComboBox
                                 x:Name="NetworkCombo"

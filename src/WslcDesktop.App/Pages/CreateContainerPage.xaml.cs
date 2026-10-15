@@ -1,10 +1,12 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using System.Collections.ObjectModel;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using WslcDesktop.Core.Abstractions;
 using WslcDesktop.Core.Models;
 using WslcDesktop.Helpers;
+using VolumeRow = WslcDesktop.Models.VolumeRow;
 
 namespace WslcDesktop.Pages;
 
@@ -20,10 +22,92 @@ public sealed partial class CreateContainerPage : Page
     private bool _prefillPortsDone;
     private bool _isBusy;
 
+    /// <summary>
+    /// 目录映射的行集合。默认留一行空行，删空后自动补回一行——
+    /// 否则删到最后会剩一个没有任何输入框的空白区块，用户不知道该怎么继续。
+    /// </summary>
+    public ObservableCollection<VolumeRow> VolumeRows { get; } = new();
+
     public CreateContainerPage()
     {
         InitializeComponent();
         _client = App.Services.GetRequiredService<IWslcClient>();
+
+        AddVolumeRow();
+    }
+
+    // ---------- 目录映射 ----------
+
+    private void AddVolumeRow() => VolumeRows.Add(new VolumeRow());
+
+    private void AddVolume_Click(object sender, RoutedEventArgs e) => AddVolumeRow();
+
+    private void RemoveVolume_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: VolumeRow row }) return;
+
+        VolumeRows.Remove(row);
+        if (VolumeRows.Count == 0) AddVolumeRow();
+
+        UpdatePreview();
+    }
+
+    private void VolumeHost_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (sender is TextBox { Tag: VolumeRow row } box) row.HostPath = box.Text;
+
+        UpdatePreview();
+    }
+
+    private void VolumeContainer_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (sender is TextBox { Tag: VolumeRow row } box) row.ContainerPath = box.Text;
+
+        UpdatePreview();
+    }
+
+    /// <summary>
+    /// 从资源管理器选本机文件夹。
+    ///
+    /// 非打包（WindowsPackageType=None）应用**必须**先把 picker 绑到窗口 HWND，
+    /// 否则 PickSingleFolderAsync 会以 COM 失败告终、连对话框都不弹。
+    /// picker 自身不可用时只提示不阻断——手输路径这条路始终留着。
+    /// </summary>
+    private async void BrowseHostFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: VolumeRow row }) return;
+
+        try
+        {
+            var picker = new Windows.Storage.Pickers.FolderPicker
+            {
+                SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.ComputerFolder,
+                CommitButtonText = "选择此文件夹"
+            };
+
+            // FileTypeFilter 必须非空：置空时 PickSingleFolderAsync 直接抛参数异常
+            picker.FileTypeFilter.Add("*");
+
+            var window = App.MainWindow;
+            if (window is null)
+            {
+                ShowMessage("找不到主窗口，无法打开资源管理器，请手动输入路径。", InfoBarSeverity.Warning);
+                return;
+            }
+
+            WinRT.Interop.InitializeWithWindow.Initialize(
+                picker, WinRT.Interop.WindowNative.GetWindowHandle(window));
+
+            var folder = await picker.PickSingleFolderAsync();
+            if (folder is null) return;   // 用户取消
+
+            row.HostPath = folder.Path;
+            UpdatePreview();
+        }
+        catch (Exception ex)
+        {
+            ShowMessage($"打开文件夹选择器失败，请手动输入路径：{ex.Message}", InfoBarSeverity.Warning);
+        }
     }
 
     protected override async void OnNavigatedTo(NavigationEventArgs e)
@@ -206,7 +290,7 @@ public sealed partial class CreateContainerPage : Page
         Command = NullIfBlank(CommandBox.Text),
         Ports = SplitLines(PortsBox.Text),
         EnvironmentVariables = SplitLines(EnvBox.Text),
-        Volumes = SplitLines(VolumesBox.Text),
+        Volumes = VolumeRows.Select(r => r.ToMount()).OfType<string>().ToList(),
         Network = NullIfBlank(NetworkCombo.Text),
         Memory = NullIfBlank(MemoryBox.Text),
         Cpus = NullIfBlank(CpusBox.Text),
