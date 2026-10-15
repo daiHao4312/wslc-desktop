@@ -23,4 +23,12 @@ public record AppPreferences
     /// 托盘不可用时会自动失效，避免出现"关不掉窗口"的死路。
     /// </summary>
     public bool CloseToTray { get; init; } = true;
+
+    /// <summary>
+    /// 更新检查用的 GitHub 仓库（<c>owner/repo</c>）；留空即关闭更新检查。
+    ///
+    /// 默认指向本项目仓库：面板只读它的 latest Release 标签与自身版本比较，
+    /// 不在其中放任何用户数据。私有仓库/无 Release/仓库名写错都会在关于页给出可读提示。
+    /// </summary>
+    public string UpdateRepo { get; init; } = "daiHao4312/wslc-desktop";
 }

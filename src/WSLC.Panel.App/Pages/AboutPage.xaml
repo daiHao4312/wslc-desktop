@@ -13,11 +13,12 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <StackPanel Grid.Row="0" Spacing="4">
                 <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="关于" />
-                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="项目信息与环境自检" />
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="项目信息、版本更新与环境自检" />
             </StackPanel>
 
             <Border
@@ -32,7 +33,8 @@
                         <Image Width="56" Height="56" Source="/Assets/AppIcon.ico" />
                         <StackPanel VerticalAlignment="Center" Spacing="4">
                             <TextBlock FontSize="20" FontWeight="Bold" Text="WSLC 面板工具" />
-                            <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="版本 1.0.0 · 原生 WinUI 3 + .NET 10" />
+                            <!-- 版本号由 AppInfo 从程序集读取，不要在 XAML 里写死 -->
+                            <TextBlock x:Name="VersionText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
                     </StackPanel>
 
@@ -47,9 +49,69 @@
                 </StackPanel>
             </Border>
 
-            <!-- 环境自检 -->
+            <!-- 版本与更新（M12） -->
             <Border
                 Grid.Row="2"
+                Padding="24"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+                <StackPanel Spacing="16">
+                    <TextBlock FontSize="16" FontWeight="SemiBold" Text="版本与更新" />
+
+                    <Grid ColumnSpacing="24" RowSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="当前版本：" />
+                        <TextBlock x:Name="CurrentVersionText" Grid.Row="0" Grid.Column="1" Text="—" />
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="更新源：" />
+                        <TextBlock
+                            x:Name="UpdateSourceText"
+                            Grid.Row="1"
+                            Grid.Column="1"
+                            Text="—"
+                            TextTrimming="CharacterEllipsis" />
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="上次检查：" />
+                        <TextBlock x:Name="LastCheckText" Grid.Row="2" Grid.Column="1" Text="从未检查" />
+                    </Grid>
+
+                    <InfoBar
+                        x:Name="UpdateInfoBar"
+                        IsClosable="True"
+                        IsOpen="False" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="CheckUpdateButton" Click="CheckUpdate_Click" Style="{StaticResource AccentButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon FontSize="14" Glyph="&#xE895;" />
+                                <TextBlock Text="检查更新" />
+                            </StackPanel>
+                        </Button>
+                        <Button Click="CopyVersionInfo_Click" Content="复制版本信息" />
+                    </StackPanel>
+
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap"
+                        Text="更新检查只比对版本号并给出下载落点，不会自动下载或替换正在运行的程序；检查会访问 GitHub，不发任何本机数据。" />
+                </StackPanel>
+            </Border>
+
+            <!-- 环境自检 -->
+            <Border
+                Grid.Row="3"
                 Padding="24"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"

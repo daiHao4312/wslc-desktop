@@ -109,6 +109,8 @@ public partial class App : Application
         services.AddSingleton<IWslcSettingsService, WslcSettingsService>();
         // 引擎事件流长驻订阅（断线重连 / 续接去重），供"操作后即时刷新"用
         services.AddSingleton<IEventStreamService, EventStreamService>();
+        // 应用自身更新检查（GitHub Releases），与容器数据通道无关
+        services.AddSingleton<IUpdateChecker, UpdateChecker>();
 
         return services.BuildServiceProvider();
     }

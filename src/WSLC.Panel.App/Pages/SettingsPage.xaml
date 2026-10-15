@@ -216,6 +216,24 @@
                                     LostFocus="RegistryTextBox_LostFocus" />
                             </Grid>
                         </Border>
+
+                        <Border Style="{StaticResource SettingsRowStyle}">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Style="{StaticResource RowTitleStyle}" Text="更新检查仓库（GitHub）" />
+                                    <TextBlock Style="{StaticResource RowHintStyle}" Text="格式 owner/repo：关于页会用它的最新 Release 标签与本面板版本比较。留空则关闭检查；面板只读发布信息，不上传任何数据。" />
+                                </StackPanel>
+                                <TextBox
+                                    x:Name="UpdateRepoTextBox"
+                                    Grid.Column="1"
+                                    Style="{StaticResource RowTextBoxStyle}"
+                                    LostFocus="UpdateRepoTextBox_LostFocus" />
+                            </Grid>
+                        </Border>
                     </StackPanel>
                 </Border>
 

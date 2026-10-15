@@ -79,6 +79,7 @@ public sealed partial class SettingsPage : Page
         EventStreamToggle.IsOn = prefs.UseEventStream;
         CloseToTrayToggle.IsOn = prefs.CloseToTray;
         RegistryTextBox.Text = prefs.DefaultRegistry;
+        UpdateRepoTextBox.Text = prefs.UpdateRepo;
 
         _isLoaded = true;
     }
@@ -155,6 +156,20 @@ public sealed partial class SettingsPage : Page
         }
 
         await SavePreferenceAsync(_prefsService.GetPreferences() with { DefaultRegistry = registry });
+    }
+
+    /// <summary>
+    /// 更新检查仓库：留空即关闭检查（不像 Registry 那样强行回填默认值——
+    /// "不想连网检查"是合法选择）。格式不对不在这里拦，关于页检查时会给出可读提示。
+    /// </summary>
+    private async void UpdateRepoTextBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (!_isLoaded) return;
+
+        var repo = UpdateRepoTextBox.Text.Trim().Trim('/');
+        UpdateRepoTextBox.Text = repo;
+
+        await SavePreferenceAsync(_prefsService.GetPreferences() with { UpdateRepo = repo });
     }
 
     private async Task SavePreferenceAsync(WSLC.Panel.Core.Models.AppPreferences prefs)
