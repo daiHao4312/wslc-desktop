@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -43,6 +44,10 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherTimer _eventDebounceTimer;
 
     private TrayIcon? _tray;
+
+    /// <summary>窗口图标句柄：由 <see cref="AppIconLoader"/> 从 exe 提取，窗口销毁时必须释放。</summary>
+    private IntPtr _windowIcon;
+
     private bool _allowClose;
     private bool _trayHintShown;
     private bool _engineCheckDone;
@@ -61,7 +66,16 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
-        AppWindow.SetIcon("Assets/AppIcon.ico");
+
+        // 窗口图标（标题栏 / 任务栏 / Alt+Tab）从 exe 的 PE 资源取。
+        // 别用 AppWindow.SetIcon(string)：那个重载按**当前工作目录**解析相对路径，
+        // 而单文件发布下 Assets 在临时解压目录，两者对不上，SetIcon 会静默失败
+        // ——实测双击发布版 exe 时任务栏一片空白。
+        _windowIcon = AppIconLoader.LoadLarge();
+        if (_windowIcon != IntPtr.Zero)
+        {
+            AppWindow.SetIcon(Win32Interop.GetIconIdFromIcon(_windowIcon));
+        }
 
         var prefs = _prefsService.GetPreferences();
         ApplyTheme(prefs.Theme);
@@ -108,6 +122,9 @@ public sealed partial class MainWindow : Window
         // 订阅方生命周期纪律：退订与 Activate 对称（ActivityPage 的 Subscribe/Unsubscribe 同款）
         _eventStream.EventReceived -= OnEngineEvent;
         _eventStream.StatusChanged -= OnEventStreamStatusChanged;
+
+        AppIconLoader.Release(_windowIcon);
+        _windowIcon = IntPtr.Zero;
     }
 
     // ---------- 托盘 ----------

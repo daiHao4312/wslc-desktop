@@ -30,7 +30,9 @@
                 CornerRadius="8">
                 <StackPanel Spacing="16">
                     <StackPanel Orientation="Horizontal" Spacing="16">
-                        <Image Width="56" Height="56" Source="/Assets/AppIcon.ico" />
+                        <!-- 用 256 的 PNG，不要用 AppIcon.ico：XAML 解码 ICO 只会取其中
+                             一个小尺寸帧（16/32）再拉到 56px，边缘糊得厉害 -->
+                        <Image Width="56" Height="56" Source="/Assets/AppIcon-256.png" />
                         <StackPanel VerticalAlignment="Center" Spacing="4">
                             <TextBlock FontSize="20" FontWeight="Bold" Text="wslc-desktop" />
                             <!-- 版本号由 AppInfo 从程序集读取，不要在 XAML 里写死 -->
