@@ -1,4 +1,4 @@
-# WSLC 面板工具（wslc-desktop）
+﻿# wslc-desktop
 
 为 WSL 容器（[`wslc`](https://learn.microsoft.com/windows/wsl/)）打造的原生 Windows 桌面管理面板。
 WinUI 3 + .NET 10，**非打包 + 自包含单文件**分发：目标机无需安装 .NET 运行时，也无需 Windows App SDK 运行时。
@@ -37,8 +37,8 @@ WinUI 3 + .NET 10，**非打包 + 自包含单文件**分发：目标机无需�
 手动命令：
 
 ```bat
-dotnet build WSLC-Panel.slnx -t:Rebuild
-dotnet test  tests\WSLC.Panel.Core.Tests\WSLC.Panel.Core.Tests.csproj
+dotnet build WslcDesktop.slnx -t:Rebuild
+dotnet test  tests\WslcDesktop.Core.Tests\WslcDesktop.Core.Tests.csproj
 ```
 
 > `启动.bat` / `跑测试.bat` 必须保持 **GBK(ANSI) 编码 + CRLF 换行**：cmd 按代码页 936 解析批处理，
@@ -52,10 +52,27 @@ dotnet test  tests\WSLC.Panel.Core.Tests\WSLC.Panel.Core.Tests.csproj
 ## 目录结构
 
 ```
-src/WSLC.Panel.Core/      服务层：wslc CLI 通道、模型、解析器（纯函数 + fixtures 单测）
-src/WSLC.Panel.App/       WinUI 3 界面：10 个页面、详情浮层、托盘、单实例
-tests/WSLC.Panel.Core.Tests/   xUnit：解析/拼命令/事件流/偏好/更新检查 + Live 实机联调
+src/WslcDesktop.Core/      服务层：wslc CLI 通道、模型、解析器（纯函数 + fixtures 单测）
+src/WslcDesktop.App/       WinUI 3 界面：10 个页面、详情浮层、托盘、单实例
+tests/WslcDesktop.Core.Tests/   xUnit：解析/拼命令/事件流/偏好/更新检查 + Live 实机联调
 ```
+
+## 命名约定
+
+应用名统一取仓库名 **`wslc-desktop`**，不存在第二个写法：
+
+| 位置 | 值 |
+| --- | --- |
+| 仓库 / Release / 发布 exe | `wslc-desktop`、`wslc-desktop.exe` |
+| 窗口标题 / 托盘提示 / 关于页 / 应用属性 | `wslc-desktop` |
+| 程序集名（`AssemblyName`） | `wslc-desktop` |
+| C# 命名空间 | `WslcDesktop`（App）、`WslcDesktop.Core`（Core / Tests） |
+| 项目与目录 | `WslcDesktop.App` / `WslcDesktop.Core` / `WslcDesktop.Core.Tests` |
+| 数据目录 | `%LOCALAPPDATA%\WslcDesktop\`（`prefs.json`、`error.log`） |
+
+> 命名空间根用 `WslcDesktop`（而非 `WslcDesktop.App`）是刻意的：App 页的类是 `WslcDesktop.App`，
+> 若命名空间尾段也叫 `App`，`WslcDesktop.App.App` 会让「命名空间 / 类型同名」在解析时产生歧义。
+> 带连字符的小写 `wslc-desktop` 只用于**外部标识**（文件名、标题、UA），不进入 C# 标识符。
 
 ## 测试基线
 

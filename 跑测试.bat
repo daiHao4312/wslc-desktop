@@ -3,7 +3,7 @@ chcp 936 >nul
 setlocal EnableExtensions
 
 rem ============================================================
-rem  WSLC 面板 - 测试
+rem  wslc-desktop - 测试
 rem
 rem  用法：
 rem    跑测试.bat          跑全部测试（含 Live* 实机联调）
@@ -16,7 +16,7 @@ rem        所以日常改代码用 unit 更快。
 rem ============================================================
 
 set "ROOT=%~dp0"
-set "TESTS=%ROOT%tests\WSLC.Panel.Core.Tests\WSLC.Panel.Core.Tests.csproj"
+set "TESTS=%ROOT%tests\WslcDesktop.Core.Tests\WslcDesktop.Core.Tests.csproj"
 
 if /I "%~1"=="unit" (
     echo 运行单元测试（跳过 Live* 实机联调）...
