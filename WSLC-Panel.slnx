@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WSLC.Panel.App/WSLC.Panel.App.csproj" />
+    <Project Path="src/WSLC.Panel.Core/WSLC.Panel.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WSLC.Panel.Core.Tests/WSLC.Panel.Core.Tests.csproj" />
+  </Folder>
+</Solution>

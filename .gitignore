@@ -1,0 +1,57 @@
+# 只放代码：构建产物、日志、发布产物一律不进仓库
+# （自包含发布物 300MB / 444 文件，进仓库毫无意义）
+
+## .NET 构建产物
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+publish/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## 构建日志与临时文件
+[Ll]og/
+[Ll]ogs/
+*.log
+*.binlog
+*.tmp
+*.bak
+
+## 测试产物
+[Tt]est[Rr]esult*/
+*.trx
+*.coverage
+*.coveragexml
+
+## NuGet
+*.nupkg
+*.snupkg
+*.nuget.props
+*.nuget.targets
+project.lock.json
+packages/
+
+## MSIX / 打包产物（本项目走非打包单文件分发，这些不该出现）
+AppPackages/
+BundleArtifacts/
+*.msix
+*.msixupload
+*.appx
+*.appxbundle
+*.appxupload
+*.pubxml
+
+## 工具与 IDE
+.vs/
+.idea/
+_ReSharper*/
+*.DotSettings.user
+*.dotCover
+
+## 生成文件
+Generated\ Files/
+*_wpftmp.csproj

@@ -1,0 +1,13 @@
+# 换行与二进制类型（避免不同机器 clone 后行为不一致）
+#
+# *.bat 必须是 CRLF：cmd 解析批处理对行尾敏感，同时这两个脚本是 GBK(ANSI) 编码，
+# 仓库里请勿用编辑器另存为 UTF-8（中文会变乱码字节、注释行可能被拆散）。
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+*.ico binary
+*.png binary
+*.jpg binary
+*.slnx text eol=crlf

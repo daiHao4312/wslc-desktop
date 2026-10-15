@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "WSLC.Panel.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "WSLC.Panel.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

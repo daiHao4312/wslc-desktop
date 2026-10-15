@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="WSLC_Panel_App.Pages.AboutPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Padding="24" RowSpacing="20">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Spacing="4">
+                <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="关于" />
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="项目信息与环境自检" />
+            </StackPanel>
+
+            <Border
+                Grid.Row="1"
+                Padding="24"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+                <StackPanel Spacing="16">
+                    <StackPanel Orientation="Horizontal" Spacing="16">
+                        <Image Width="56" Height="56" Source="/Assets/AppIcon.ico" />
+                        <StackPanel VerticalAlignment="Center" Spacing="4">
+                            <TextBlock FontSize="20" FontWeight="Bold" Text="WSLC 面板工具" />
+                            <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="版本 1.0.0 · 原生 WinUI 3 + .NET 10" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <TextBlock
+                        TextWrapping="Wrap"
+                        Text="为 WSL 容器（wslc）打造的原生桌面管理面板。轻量、快速、无额外运行时层，支持 Mica 材质与深浅色模式即时切换。" />
+
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap"
+                        Text="遵循 Apache-2.0 协议 · 数据层经验参考开源项目 wslc-panel，官方 API 契约与控件实现参考 WSL Container Desktop" />
+                </StackPanel>
+            </Border>
+
+            <!-- 环境自检 -->
+            <Border
+                Grid.Row="2"
+                Padding="24"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+                <StackPanel Spacing="16">
+                    <TextBlock FontSize="16" FontWeight="SemiBold" Text="环境自检" />
+
+                    <InfoBar
+                        x:Name="ReadinessInfoBar"
+                        IsClosable="False"
+                        IsOpen="False" />
+
+                    <Grid ColumnSpacing="24" RowSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="WSL 引擎：" />
+                        <TextBlock x:Name="EngineVersionText" Grid.Row="0" Grid.Column="1" Text="检测中…" />
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Linux 内核：" />
+                        <TextBlock x:Name="KernelText" Grid.Row="1" Grid.Column="1" Text="检测中…" />
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="会话管理器：" />
+                        <TextBlock x:Name="SessionManagerText" Grid.Row="2" Grid.Column="1" Text="检测中…" />
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Windows：" />
+                        <TextBlock x:Name="WindowsText" Grid.Row="3" Grid.Column="1" Text="检测中…" />
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="缺失组件：" />
+                        <TextBlock x:Name="MissingComponentsText" Grid.Row="4" Grid.Column="1" Text="检测中…" TextWrapping="Wrap" />
+
+                        <TextBlock Grid.Row="5" Grid.Column="0" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="引擎配置：" />
+                        <TextBlock
+                            x:Name="SettingsFileText"
+                            Grid.Row="5"
+                            Grid.Column="1"
+                            Text="检测中…"
+                            TextTrimming="CharacterEllipsis" />
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Click="CopyUpgradeCommand_Click" Content="复制升级命令" />
+                        <Button Click="OpenWslcPrompt_Click" Content="在终端中使用 wslc" />
+                        <Button Click="RefreshCheck_Click" Content="重新检测" />
+                    </StackPanel>
+
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="已知边界：官方 wslc compose 尚未发布，本面板不自研编排层；交互式终端与日志跟随交由 Windows Terminal；渲染与真实交互需在本机实测。"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</Page>
