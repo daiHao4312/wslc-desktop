@@ -1,5 +1,7 @@
 ﻿# wslc-desktop
 
+**中文** | [English](README.en.md)
+
 为 WSL 容器（[`wslc`](https://learn.microsoft.com/windows/wsl/)）打造的原生 Windows 桌面管理面板。
 WinUI 3 + .NET 10，**非打包 + 自包含单文件**分发：目标机无需安装 .NET 运行时，也无需 Windows App SDK 运行时。
 
