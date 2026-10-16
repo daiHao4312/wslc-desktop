@@ -71,16 +71,36 @@
             x:Name="DistrosListView"
             Grid.Row="3"
             SelectionMode="None">
+            <ListView.HeaderTemplate>
+                <DataTemplate>
+                    <!-- 表头与行两套 Grid 必须同列定义；Auto 列一律钉成固定宽度，见 ImagesPage 的说明 -->
+                    <Grid Padding="12,0,12,8" ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="10" />
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="1*" />
+                            <ColumnDefinition Width="1*" />
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="176" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="1" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="发行版 / 安装位置" />
+                        <TextBlock Grid.Column="2" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="状态" />
+                        <TextBlock Grid.Column="3" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="WSL 版本" />
+                        <TextBlock Grid.Column="4" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="磁盘占用" />
+                        <TextBlock Grid.Column="5" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="操作" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.HeaderTemplate>
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="models:DistroModel">
                     <Grid Padding="12,10" ColumnSpacing="16">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="10" />
                             <ColumnDefinition Width="2*" />
                             <ColumnDefinition Width="1*" />
                             <ColumnDefinition Width="1*" />
                             <ColumnDefinition Width="2*" />
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="176" />
                         </Grid.ColumnDefinitions>
 
                         <Ellipse

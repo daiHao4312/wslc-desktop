@@ -58,15 +58,33 @@
             x:Name="SessionsListView"
             Grid.Row="3"
             SelectionMode="None">
+            <ListView.HeaderTemplate>
+                <DataTemplate>
+                    <!-- 表头与行两套 Grid 必须同列定义；Auto 列一律钉成固定宽度，见 ImagesPage 的说明 -->
+                    <Grid Padding="12,0,12,8" ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="20" />
+                            <ColumnDefinition Width="3*" />
+                            <ColumnDefinition Width="1*" />
+                            <ColumnDefinition Width="1*" />
+                            <ColumnDefinition Width="88" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="1" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="会话 / 存储路径" />
+                        <TextBlock Grid.Column="2" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="会话 ID / 创建者 PID" />
+                        <TextBlock Grid.Column="3" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="存储磁盘" />
+                        <TextBlock Grid.Column="4" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="操作" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.HeaderTemplate>
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="models:SessionModel">
                     <Grid Padding="12,10" ColumnSpacing="16">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="20" />
                             <ColumnDefinition Width="3*" />
                             <ColumnDefinition Width="1*" />
                             <ColumnDefinition Width="1*" />
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="88" />
                         </Grid.ColumnDefinitions>
 
                         <FontIcon

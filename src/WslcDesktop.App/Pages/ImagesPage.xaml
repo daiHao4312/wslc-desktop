@@ -110,15 +110,37 @@
             ItemContainerStyle="{StaticResource DataRowItemStyle}"
             SelectionChanged="ImagesListView_SelectionChanged"
             SelectionMode="Multiple">
+            <ListView.HeaderTemplate>
+                <DataTemplate>
+                    <!--
+                        表头与行是两套**独立测量**的 Grid：只有列定义完全相同才会对齐。
+                        首列（图标）与末列（操作）原先是 Auto——表头里没有等宽内容，
+                        两侧各测各的会让后面所有列整体错位，所以一并钉成固定宽度。
+                    -->
+                    <Grid Padding="44,0,12,8" ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="20" />
+                            <ColumnDefinition Width="3*" />
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="1*" />
+                            <ColumnDefinition Width="88" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="1" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="镜像 / 仓库" />
+                        <TextBlock Grid.Column="2" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="ID / 创建时间" />
+                        <TextBlock Grid.Column="3" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="大小" />
+                        <TextBlock Grid.Column="4" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="操作" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.HeaderTemplate>
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="models:ImageModel">
                     <Grid Padding="44,10,12,10" ColumnSpacing="16">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="20" />
                             <ColumnDefinition Width="3*" />
                             <ColumnDefinition Width="2*" />
                             <ColumnDefinition Width="1*" />
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="88" />
                         </Grid.ColumnDefinitions>
 
                         <!--

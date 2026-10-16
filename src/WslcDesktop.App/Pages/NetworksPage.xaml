@@ -74,16 +74,36 @@
             ItemContainerStyle="{StaticResource DataRowItemStyle}"
             SelectionChanged="NetworksListView_SelectionChanged"
             SelectionMode="Multiple">
-            <ListView.ItemTemplate>
-                <DataTemplate x:DataType="models:NetworkModel">
-                    <Grid Padding="44,10,12,10" ColumnSpacing="16">
+            <ListView.HeaderTemplate>
+                <DataTemplate>
+                    <!-- 表头与行两套 Grid 必须同列定义；Auto 列一律钉成固定宽度，见 ImagesPage 的说明 -->
+                    <Grid Padding="44,0,12,8" ColumnSpacing="16">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="20" />
                             <ColumnDefinition Width="2*" />
                             <ColumnDefinition Width="1*" />
                             <ColumnDefinition Width="1*" />
                             <ColumnDefinition Width="1*" />
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="44" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="1" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="名称 / ID" />
+                        <TextBlock Grid.Column="2" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="驱动" />
+                        <TextBlock Grid.Column="3" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="作用域" />
+                        <TextBlock Grid.Column="4" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="IP 支持" />
+                        <TextBlock Grid.Column="5" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="操作" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.HeaderTemplate>
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="models:NetworkModel">
+                    <Grid Padding="44,10,12,10" ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="20" />
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="1*" />
+                            <ColumnDefinition Width="1*" />
+                            <ColumnDefinition Width="1*" />
+                            <ColumnDefinition Width="44" />
                         </Grid.ColumnDefinitions>
 
                         <!--
