@@ -57,6 +57,7 @@
         <ListView
             x:Name="SessionsListView"
             Grid.Row="3"
+            ItemContainerStyle="{StaticResource DataRowItemStyle}"
             SelectionMode="None">
             <ListView.HeaderTemplate>
                 <DataTemplate>
@@ -112,15 +113,13 @@
                                 TextTrimming="CharacterEllipsis" />
                         </StackPanel>
 
-                        <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="2">
-                            <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="会话 ID / 创建者 PID" />
-                            <TextBlock Text="{x:Bind PidDisplay}" />
-                        </StackPanel>
+                        <!--
+                            这两列原先用行内灰色小字充当标签（"会话 ID / 创建者 PID"、"存储磁盘"），
+                            表头补齐后语义完全重复，去掉标签行只留值，与其余列表页保持一致。
+                        -->
+                        <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="{x:Bind PidDisplay}" />
 
-                        <StackPanel Grid.Column="3" VerticalAlignment="Center" Spacing="2">
-                            <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="存储磁盘" />
-                            <TextBlock Text="{x:Bind VhdSizeDisplay}" />
-                        </StackPanel>
+                        <TextBlock Grid.Column="3" VerticalAlignment="Center" Text="{x:Bind VhdSizeDisplay}" />
 
                         <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
                             <Button

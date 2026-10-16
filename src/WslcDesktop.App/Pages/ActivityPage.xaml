@@ -138,6 +138,7 @@
         <ListView
             x:Name="EventsListView"
             Grid.Row="3"
+            ItemContainerStyle="{StaticResource DataRowItemStyle}"
             SelectionMode="None">
             <ListView.HeaderTemplate>
                 <DataTemplate>

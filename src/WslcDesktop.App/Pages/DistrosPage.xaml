@@ -70,6 +70,7 @@
         <ListView
             x:Name="DistrosListView"
             Grid.Row="3"
+            ItemContainerStyle="{StaticResource DataRowItemStyle}"
             SelectionMode="None">
             <ListView.HeaderTemplate>
                 <DataTemplate>
