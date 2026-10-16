@@ -50,7 +50,9 @@ public class CliWslcClient : IWslcClient
 
     public async Task<IReadOnlyList<ContainerStatsModel>> GetContainerStatsAsync(CancellationToken cancellationToken = default)
     {
-        var result = await _runner.RunAsync(_wslcExecutable, "stats --no-stream --format json", cancellationToken: cancellationToken);
+        // 不要写 --no-stream：那是 docker stats 的选项，wslc 的 stats 本身就是单次快照语义，
+        // 多传这个选项引擎直接报「选项名称未被识别」→ IsSuccess=false → 整列 CPU/内存永远显示 —。
+        var result = await _runner.RunAsync(_wslcExecutable, "stats --format json", cancellationToken: cancellationToken);
         if (!result.IsSuccess) return Array.Empty<ContainerStatsModel>();
 
         return JsonLinesParser.ParseStats(result.StandardOutput);

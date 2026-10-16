@@ -49,6 +49,19 @@ public class CompositeWslcClientLiveTests
                 _output.WriteLine($"  Stats: CPU={c.Stats.CpuPercentRaw}, Mem={c.Stats.MemoryUsage}, Net={c.Stats.NetIO}");
             }
         }
+
+        // 这里原来只有 WriteLine、一条断言都没有，于是「stats 命令参数写错 → 整列 CPU/内存
+        // 永远是 —」这种故障可以一路绿灯溜过去（实测踩过：多传了 docker 才有的 --no-stream，
+        // 引擎直接回「选项名称未被识别」）。有运行中的容器却一条 stats 都拿不到，就是坏了。
+        var running = containers.Where(c => c.IsRunning).ToList();
+        if (running.Count == 0)
+        {
+            _output.WriteLine("没有运行中的容器，跳过 stats 断言（引擎/会话不可用时也走这条路）");
+            return;
+        }
+
+        Assert.Contains(running, c => c.Stats is not null);
+        Assert.Contains(running, c => !string.IsNullOrWhiteSpace(c.Stats!.MemoryUsage));
     }
 
     [Fact]
