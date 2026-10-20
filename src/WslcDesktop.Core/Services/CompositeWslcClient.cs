@@ -211,6 +211,21 @@ public class CompositeWslcClient : IWslcClient
     public Task<ImageInspectInfo> InspectImageAsync(string reference, CancellationToken cancellationToken = default)
         => _cli.InspectImageAsync(reference, cancellationToken);
 
+    /// <summary>镜像导出：官方 API 没有归档能力（API覆盖矩阵里搜不到 save/load），固定走 CLI。</summary>
+    public Task<ImageArchiveResult> ExportImagesAsync(
+        IReadOnlyList<string> references,
+        string outputPath,
+        Action<ImageArchiveProgress>? onProgress = null,
+        CancellationToken cancellationToken = default)
+        => _cli.ExportImagesAsync(references, outputPath, onProgress, cancellationToken);
+
+    /// <summary>镜像导入：同上，只有 CLI 的 <c>load -i</c>；API 通道没有归档入口，不给它留口子。</summary>
+    public Task<ImageArchiveResult> ImportImageArchiveAsync(
+        string archivePath,
+        Action<ImageArchiveProgress>? onProgress = null,
+        CancellationToken cancellationToken = default)
+        => _cli.ImportImageArchiveAsync(archivePath, onProgress, cancellationToken);
+
     public Task<bool> CreateNetworkAsync(string name, string driver = "bridge", CancellationToken cancellationToken = default)
         => _cli.CreateNetworkAsync(name, driver, cancellationToken);
 

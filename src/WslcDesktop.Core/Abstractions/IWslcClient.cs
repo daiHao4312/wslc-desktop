@@ -122,6 +122,34 @@ public interface IWslcClient
     /// <summary>读取本地镜像声明的启动信息（端口/命令），用于创建容器表单预填。</summary>
     Task<ImageInspectInfo> InspectImageAsync(string reference, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// 把本地镜像导出成一个 tar 归档（<c>wslc save -o &lt;文件&gt; &lt;镜像&gt;...</c>）。
+    ///
+    /// 一个 tar 里可以放多个镜像（引擎支持一次给多个引用），这是"搬运一整套镜像"最省事的方式。
+    /// 进度只能靠**轮询目标文件大小**：<c>wslc save</c> 成功时一句话都不输出（实测 8.4 MB 的 alpine），
+    /// 与 <c>wsl --export</c> 同一个毛病。
+    /// </summary>
+    /// <remarks>
+    /// 失败或取消时会**删除目标文件**——半截 tar 拿去 <c>load</c> 只会得到一句含糊的错，
+    /// 留着比删掉更误导人。
+    /// </remarks>
+    Task<ImageArchiveResult> ExportImagesAsync(
+        IReadOnlyList<string> references,
+        string outputPath,
+        Action<ImageArchiveProgress>? onProgress = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 从 tar 归档导入镜像（<c>wslc load -i &lt;文件&gt;</c>）。
+    ///
+    /// 引擎每加载完一个镜像就打一行 <c>已加载映像: repo:tag</c>，所以进度只能报"已经加载了哪些"，
+    /// 没有字节数可显示。同名引用会被覆盖成归档里的内容（与 docker load 一致）。
+    /// </summary>
+    Task<ImageArchiveResult> ImportImageArchiveAsync(
+        string archivePath,
+        Action<ImageArchiveProgress>? onProgress = null,
+        CancellationToken cancellationToken = default);
+
     // ---------- 网络 ----------
     Task<bool> CreateNetworkAsync(string name, string driver = "bridge", CancellationToken cancellationToken = default);
 

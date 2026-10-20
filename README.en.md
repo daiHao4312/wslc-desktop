@@ -11,7 +11,7 @@ neither the .NET runtime nor the Windows App SDK runtime.
 | Module | What it does |
 | --- | --- |
 | Containers | List with live CPU / memory, start / stop / restart / force-kill / delete (all behind a confirmation), batch operations, one-click port open, detail flyout (inspect / **log snapshot + live follow + save to file** / **cancellable command execution** — output streams live and Stop signals the process inside the container) |
-| Images | A **pull dialog** (registry / repository / tag as separate fields; the registry list is the built-in accelerators plus Docker Hub **plus any sources you added yourself**, 10 common-image shortcuts, one-click **tag listing** sorted "latest first → versions descending", and automatic download-size measurement for the selected tag), **private-registry authentication** (configure credentials once in Settings; they are applied automatically per registry when listing tags or pulling), **rename / re-tag**, local table, pull progress (cancellable), delete, create a container from an image in one click |
+| Images | A **pull dialog** (registry / repository / tag as separate fields; the registry list is the built-in accelerators plus Docker Hub **plus any sources you added yourself**, 10 common-image shortcuts, one-click **tag listing** sorted "latest first → versions descending", and automatic download-size measurement for the selected tag), **private-registry authentication** (configure credentials once in Settings; they are applied automatically per registry when listing tags or pulling), **rename / re-tag**, **export to / import from a tar archive** (one archive can hold several images; the batch bar exports a multi-selection at once), local table, pull progress (cancellable), delete, create a container from an image in one click |
 | Networks / Volumes / Sessions | List, create and remove (built-in networks are protected; consequences are spelled out before deletion) |
 | WSL distros | `wsl -l -v` + registry Lxss: state / version / default / install location / VHDX size, start / terminate / set default / open terminal / unregister |
 | Add a distro | Import a local package (`.tar` / `.tar.gz` / `.tar.xz` / `.vhdx` / `.wsl` — the install method is picked from the extension) or install **online** from the Microsoft catalogue (`wsl --list --online`); includes **pre-flight checks** (duplicate name / target directory / extension) and a **live equivalent-command preview**, with the install streamed and cancellable |
@@ -131,6 +131,10 @@ The application name is always the repository name, **`wslc-desktop`** — there
   front instead of letting you wait for a request that is bound to fail. **The registry you type is never
   renamed**: `docker.io` stays visible and is used as the pull reference; only the tag query talks to the
   real API endpoint `registry-1.docker.io` under the hood
+- **Image export / import** uses `wslc save` / `wslc load`. The engine prints **no progress at all** while saving,
+  so an export reports "written N MB" without a percentage; a failed or cancelled export **deletes the partial
+  tar** (a half-written archive only yields a vaguer error on import). The archive format is verified against
+  this panel and `wslc load` only — cross-compatibility with `docker load` is untested
 
 ## License
 

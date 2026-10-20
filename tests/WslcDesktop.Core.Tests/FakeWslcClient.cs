@@ -196,6 +196,39 @@ internal sealed class FakeWslcClient : IWslcClient
     public Task<ImageInspectInfo> InspectImageAsync(string reference, CancellationToken cancellationToken = default)
         => Task.FromResult(new ImageInspectInfo());
 
+    /// <summary>测试注入：镜像导出（默认成功、不带文件）。</summary>
+    public Func<IReadOnlyList<string>, string, Action<ImageArchiveProgress>?, CancellationToken, Task<ImageArchiveResult>>? ExportArchiveBehavior { get; set; }
+
+    /// <summary>按调用顺序记录导出请求：(镜像引用, 目标路径)。</summary>
+    public List<(IReadOnlyList<string> References, string Path)> ExportRequests { get; } = new();
+
+    public Task<ImageArchiveResult> ExportImagesAsync(
+        IReadOnlyList<string> references,
+        string outputPath,
+        Action<ImageArchiveProgress>? onProgress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ExportRequests.Add((references, outputPath));
+        return ExportArchiveBehavior?.Invoke(references, outputPath, onProgress, cancellationToken)
+               ?? Task.FromResult(new ImageArchiveResult { Success = true, Path = outputPath, References = references });
+    }
+
+    /// <summary>测试注入：镜像导入（默认成功、不带镜像）。</summary>
+    public Func<string, Action<ImageArchiveProgress>?, CancellationToken, Task<ImageArchiveResult>>? ImportArchiveBehavior { get; set; }
+
+    /// <summary>按调用顺序记录导入的归档路径。</summary>
+    public List<string> ImportRequests { get; } = new();
+
+    public Task<ImageArchiveResult> ImportImageArchiveAsync(
+        string archivePath,
+        Action<ImageArchiveProgress>? onProgress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ImportRequests.Add(archivePath);
+        return ImportArchiveBehavior?.Invoke(archivePath, onProgress, cancellationToken)
+               ?? Task.FromResult(new ImageArchiveResult { Success = true, Path = archivePath });
+    }
+
     public Task<bool> CreateNetworkAsync(string name, string driver = "bridge", CancellationToken cancellationToken = default)
         => Task.FromResult(true);
 

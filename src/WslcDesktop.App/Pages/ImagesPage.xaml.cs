@@ -27,6 +27,10 @@ public sealed partial class ImagesPage : Page, IRefreshable
     private readonly HashSet<string> _completedLayers = new(StringComparer.OrdinalIgnoreCase);
     private bool _isPulling;
 
+    /// <summary>导出/导入进行中的取消源与忙标记（与拉取互不干扰：两者都在 Grid.Row=1 的面板里）。</summary>
+    private CancellationTokenSource? _archiveCts;
+    private bool _isArchiving;
+
     public ImagesPage()
     {
         InitializeComponent();
@@ -50,16 +54,18 @@ public sealed partial class ImagesPage : Page, IRefreshable
         // 操作旧页面实例（PullPanel 已随新实例重建），旧实例也无法被回收
         _pageCts.Cancel();
         _pullCts?.Cancel();
+        _archiveCts?.Cancel();
     }
 
     public async Task RefreshAsync(bool userInitiated)
     {
-        if (_isPulling)
+        if (_isPulling || _isArchiving)
         {
             // 忙时不是静默吞掉：说清楚点了没反应的原因（本页无 InfoBar，走对话框）
             if (userInitiated)
             {
-                _ = DialogHelper.ShowErrorAsync(XamlRoot, "操作进行中", "正在拉取镜像，完成后会自动刷新列表。");
+                var doing = _isPulling ? "正在拉取镜像" : "正在导出或导入镜像";
+                _ = DialogHelper.ShowErrorAsync(XamlRoot, "操作进行中", $"{doing}，完成后会自动刷新列表。");
             }
             return;
         }
@@ -302,6 +308,247 @@ public sealed partial class ImagesPage : Page, IRefreshable
             LoadingBar.Visibility = Visibility.Collapsed;
             await RefreshAsync(userInitiated: false);
         }
+    }
+
+
+    // ---------------- 导出 / 导入（tar 归档）----------------
+
+    private async void ExportImage_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string reference }) return;
+        await ExportAsync(new[] { reference });
+    }
+
+    private async void BatchExport_Click(object sender, RoutedEventArgs e)
+    {
+        var references = ImagesListView.SelectedItems.OfType<ImageModel>()
+            .Select(i => i.FullName)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .ToList();
+
+        if (references.Count == 0)
+        {
+            _ = DialogHelper.ShowErrorAsync(XamlRoot, "没有选中镜像", "先勾选要导出的镜像。");
+            return;
+        }
+
+        await ExportAsync(references);
+    }
+
+    /// <summary>
+    /// 导出为 tar：一个归档可以装多个镜像（<c>wslc save</c> 支持一次给多个引用）。
+    /// 先选文件再动手 —— 文件选择器本身就是取消点，不该先排上导出任务再去问路径。
+    /// </summary>
+    private async Task ExportAsync(IReadOnlyList<string> references)
+    {
+        if (_isPulling || _isArchiving) return;
+
+        var path = await PickExportArchiveAsync(references[0]);
+        if (path is null) return;
+
+        var what = references.Count == 1 ? references[0] : $"{references.Count} 个镜像";
+        var confirmed = await DialogHelper.ConfirmAsync(
+            XamlRoot,
+            "导出为 tar 归档？",
+            $"将执行：wslc save -o \"{path}\" {what}\n\n" +
+            "归档里是完整的镜像层，体积接近镜像本身；导出期间可以取消 —— 取消会删掉写了一半的文件。",
+            "开始导出");
+
+        if (!confirmed) return;
+
+        await RunArchiveAsync(
+            isExport: true,
+            $"正在导出 {what}",
+            (progress, ct) => _client.ExportImagesAsync(references, path, progress, ct));
+    }
+
+    private async void ImportImage_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isPulling || _isArchiving) return;
+
+        var path = await PickArchiveToImportAsync();
+        if (path is null) return;
+
+        var confirmed = await DialogHelper.ConfirmAsync(
+            XamlRoot,
+            "从 tar 导入镜像？",
+            $"将执行：wslc load -i \"{path}\"\n\n" +
+            "归档里的引用按原名恢复；本地已有同名引用时会被归档里的内容覆盖（层已在本地则不会重复写入）。",
+            "开始导入");
+
+        if (!confirmed) return;
+
+        await RunArchiveAsync(
+            isExport: false,
+            $"正在导入 {Path.GetFileName(path)}",
+            (progress, ct) => _client.ImportImageArchiveAsync(path, progress, ct));
+    }
+
+    /// <summary>
+    /// 导出/导入的统一执行壳：面板 + 进度 + 取消 + 结束语。
+    ///
+    /// 与拉取共用 Grid.Row=1 的位置（两者互斥）：用户看到的始终是"页头下面那一条"，
+    /// 不需要学两个不同的进度位置。
+    /// </summary>
+    private async Task RunArchiveAsync(
+        bool isExport,
+        string title,
+        Func<Action<ImageArchiveProgress>, CancellationToken, Task<ImageArchiveResult>> run)
+    {
+        _isArchiving = true;
+        _archiveCts = new CancellationTokenSource();
+
+        ArchivePanel.Visibility = Visibility.Visible;
+        ArchiveTitleText.Text = title;
+        ArchiveBar.IsIndeterminate = true;
+        ArchiveBar.Value = 0;
+        ArchiveStatusText.Text = isExport ? "正在写入文件…" : "正在读取归档…";
+        CancelArchiveButton.IsEnabled = true;
+
+        try
+        {
+            var result = await run(
+                progress => DispatcherQueue.TryEnqueue(() => ApplyArchiveProgress(progress)),
+                _archiveCts.Token);
+
+            if (XamlRoot is null) return;
+
+            ArchiveBar.IsIndeterminate = false;
+            ArchiveBar.Value = result.Success ? 100 : 0;
+
+            if (result.Cancelled)
+            {
+                ArchiveTitleText.Text = "已取消";
+                ArchiveStatusText.Text = result.Message;
+            }
+            else if (result.Success)
+            {
+                ArchiveTitleText.Text = isExport ? "导出完成" : "导入完成";
+
+                if (isExport)
+                {
+                    ArchiveStatusText.Text =
+                        $"{result.Message} → {result.Path}（耗时 {result.Duration.TotalSeconds:F1}s）";
+                }
+                else
+                {
+                    // 导入最要紧的是"到底进来了哪些名字"，直接摆出来
+                    ArchiveStatusText.Text = result.References.Count > 0
+                        ? $"{result.Message}：{string.Join("、", result.References)}"
+                        : $"{result.Message}（耗时 {result.Duration.TotalSeconds:F1}s）";
+                }
+            }
+            else
+            {
+                ArchiveTitleText.Text = "操作失败";
+                ArchiveStatusText.Text = result.Message;
+                _ = DialogHelper.ShowErrorAsync(XamlRoot, isExport ? "导出失败" : "导入失败", result.Message);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 页面已离开：面板随之消失，不用再更新文字
+        }
+        catch (Exception ex)
+        {
+            if (XamlRoot is not null)
+            {
+                ArchiveTitleText.Text = "操作失败";
+                ArchiveStatusText.Text = ex.Message;
+                _ = DialogHelper.ShowErrorAsync(XamlRoot, isExport ? "导出失败" : "导入失败", ex.Message);
+            }
+        }
+        finally
+        {
+            // 先清忙标记再刷新：RefreshAsync 会把"忙"当成"点了没反应"挡掉
+            _isArchiving = false;
+            _archiveCts?.Dispose();
+            _archiveCts = null;
+            CancelArchiveButton.IsEnabled = false;
+
+            await RefreshAsync(userInitiated: false);
+
+            await Task.Delay(1500);
+            if (XamlRoot is not null) ArchivePanel.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>进度：导出报已写字节数（文件大小是唯一连续量），导入报已加载的镜像名。</summary>
+    private void ApplyArchiveProgress(ImageArchiveProgress progress)
+    {
+        if (XamlRoot is null) return;
+
+        ArchiveStatusText.Text = progress.BytesWritten > 0
+            ? $"{progress.Status} · 已写入 {progress.Display}"
+            : progress.Status;
+    }
+
+    private void CancelArchive_Click(object sender, RoutedEventArgs e)
+    {
+        if (_archiveCts is null) return;
+
+        CancelArchiveButton.IsEnabled = false;
+        ArchiveTitleText.Text = "正在取消…";
+        _archiveCts.Cancel();
+    }
+
+    private async Task<string?> PickExportArchiveAsync(string firstReference)
+    {
+        try
+        {
+            var picker = new Windows.Storage.Pickers.FileSavePicker
+            {
+                SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary,
+                SuggestedFileName = ImageArchiveParser.SuggestFileName(firstReference, DateTimeOffset.Now)
+            };
+
+            picker.FileTypeChoices.Add("tar 归档", new List<string> { ImageArchiveParser.ArchiveExtension });
+            if (!TryBindPickerToWindow(picker)) return null;
+
+            return (await picker.PickSaveFileAsync())?.Path;
+        }
+        catch (Exception ex)
+        {
+            _ = DialogHelper.ShowErrorAsync(XamlRoot, "打开保存对话框失败", ex.Message);
+            return null;
+        }
+    }
+
+    private async Task<string?> PickArchiveToImportAsync()
+    {
+        try
+        {
+            var picker = new Windows.Storage.Pickers.FileOpenPicker
+            {
+                SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads,
+                ViewMode = Windows.Storage.Pickers.PickerViewMode.List
+            };
+
+            // FileTypeFilter 必须非空，否则 PickSingleFileAsync 直接抛参数异常
+            picker.FileTypeFilter.Add(ImageArchiveParser.ArchiveExtension);
+            picker.FileTypeFilter.Add("*");
+            if (!TryBindPickerToWindow(picker)) return null;
+
+            return (await picker.PickSingleFileAsync())?.Path;
+        }
+        catch (Exception ex)
+        {
+            _ = DialogHelper.ShowErrorAsync(XamlRoot, "打开文件选择器失败", ex.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 非打包（WindowsPackageType=None）应用**必须**把 picker 绑到窗口 HWND，
+    /// 否则会以 COM 失败告终、连对话框都不弹（与发行版导出同一个坑）。
+    /// </summary>
+    private static bool TryBindPickerToWindow(object picker)
+    {
+        var window = App.MainWindow;
+        if (window is null) return false;
+
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(window));
+        return true;
     }
 
 

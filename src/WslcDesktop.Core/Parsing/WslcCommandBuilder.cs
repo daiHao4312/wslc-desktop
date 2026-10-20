@@ -135,6 +135,30 @@ public static class WslcCommandBuilder
     }
 
     /// <summary>
+    /// 拼 <c>wslc save</c> 的参数（镜像导出）。
+    ///
+    /// 形状按引擎帮助定：<c>save [选项] &lt;image&gt;...</c> —— **选项在前、镜像在后**。
+    /// ⚠️ <c>-o</c> 绝不能省：不给它时引擎把 tar 直接写 stdout（实测），
+    /// 省了就会把整个镜像倒进输出管道。
+    /// </summary>
+    public static string BuildSaveArguments(IEnumerable<string> references, string outputPath)
+    {
+        var sb = new StringBuilder("save -o ").Append(Quote(outputPath));
+
+        foreach (var reference in references ?? Enumerable.Empty<string>())
+        {
+            if (string.IsNullOrWhiteSpace(reference)) continue;
+            sb.Append(' ').Append(Quote(reference.Trim()));
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>拼 <c>wslc load</c> 的参数（镜像导入）：<c>load [选项]</c>，路径靠 <c>-i</c> 给。</summary>
+    public static string BuildLoadArguments(string archivePath)
+        => $"load -i {Quote(archivePath)}";
+
+    /// <summary>
     /// 参数级转义：含空格/引号/中文路径的参数一律加双引号并转义内部引号，
     /// 避免 <c>--name my container</c> 被拆成两个参数。
     ///

@@ -352,6 +352,291 @@ public class CliWslcClient : IWslcClient
         return ImageInspectParser.Parse(payload);
     }
 
+    /// <summary>导出进度的轮询间隔（<c>wslc save</c> 自己一行都不打，文件大小是唯一连续量）。</summary>
+    private static readonly TimeSpan ArchivePollInterval = TimeSpan.FromMilliseconds(400);
+
+    public async Task<ImageArchiveResult> ExportImagesAsync(
+        IReadOnlyList<string> references,
+        string outputPath,
+        Action<ImageArchiveProgress>? onProgress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var refs = (references ?? Array.Empty<string>())
+            .Where(r => !string.IsNullOrWhiteSpace(r))
+            .Select(r => r.Trim())
+            .ToList();
+
+        if (refs.Count == 0)
+        {
+            return ArchiveFailure("请至少选择一个镜像");
+        }
+
+        if (!ImageArchiveParser.TryValidateExportPath(outputPath, out var pathError))
+        {
+            return ArchiveFailure(pathError);
+        }
+
+        var path = outputPath.Trim();
+        var arguments = WslcCommandBuilder.BuildSaveArguments(refs, path);
+        var commandLine = $"wslc {arguments}";
+        var stopwatch = Stopwatch.StartNew();
+        var status = refs.Count == 1 ? $"正在导出 {refs[0]}…" : $"正在导出 {refs.Count} 个镜像…";
+
+        try
+        {
+            // save 正常时一句话都不输出；stderr 仍然要接（错误全在那边）
+            var streaming = _runner.RunStreamingAsync(
+                _wslcExecutable,
+                arguments,
+                _ => { },
+                _ => { },
+                cancellationToken: cancellationToken);
+
+            // 进度只能靠轮询目标文件：引擎不打百分比，文件大小是这里唯一连续的量
+            while (!streaming.IsCompleted)
+            {
+                try
+                {
+                    await Task.Delay(ArchivePollInterval, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+
+                if (streaming.IsCompleted) break;
+                onProgress?.Invoke(new ImageArchiveProgress { BytesWritten = TryGetFileLength(path), Status = status });
+            }
+
+            var result = await streaming.ConfigureAwait(false);
+            stopwatch.Stop();
+
+            if (!result.IsSuccess)
+            {
+                // 半截 tar 拿去 load 只会得到一句含糊的错 —— 失败就删掉，不留误导人的产物
+                TryDeleteFile(path);
+                return new ImageArchiveResult
+                {
+                    Success = false,
+                    Message = ImageArchiveParser.ExtractError(
+                        result.StandardError,
+                        result.StandardOutput,
+                        ImageArchiveParser.DescribeFailure(isExport: true)),
+                    Path = path,
+                    CommandLine = commandLine,
+                    Duration = stopwatch.Elapsed,
+                    References = refs
+                };
+            }
+
+            var bytes = TryGetFileLength(path);
+            if (bytes <= 0)
+            {
+                TryDeleteFile(path);
+                return new ImageArchiveResult
+                {
+                    Success = false,
+                    Message = "引擎报告成功，但目标文件不存在或为空（磁盘满 / 路径被占用？）",
+                    Path = path,
+                    CommandLine = commandLine,
+                    Duration = stopwatch.Elapsed,
+                    References = refs
+                };
+            }
+
+            onProgress?.Invoke(new ImageArchiveProgress { BytesWritten = bytes, Status = "导出完成" });
+
+            return new ImageArchiveResult
+            {
+                Success = true,
+                Message = $"已导出 {refs.Count} 个镜像（{ImageArchiveProgress.FormatSize(bytes)}）",
+                Path = path,
+                CommandLine = commandLine,
+                Duration = stopwatch.Elapsed,
+                References = refs
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            stopwatch.Stop();
+            TryDeleteFile(path);
+            return new ImageArchiveResult
+            {
+                Success = false,
+                Cancelled = true,
+                Message = "已取消导出，未完成的文件已删除",
+                Path = path,
+                CommandLine = commandLine,
+                Duration = stopwatch.Elapsed,
+                References = refs
+            };
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            TryDeleteFile(path);
+            return new ImageArchiveResult
+            {
+                Success = false,
+                Message = ex.Message,
+                Path = path,
+                CommandLine = commandLine,
+                Duration = stopwatch.Elapsed,
+                References = refs
+            };
+        }
+    }
+
+    public async Task<ImageArchiveResult> ImportImageArchiveAsync(
+        string archivePath,
+        Action<ImageArchiveProgress>? onProgress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!ImageArchiveParser.TryValidateImportPath(archivePath, out var pathError))
+        {
+            return ArchiveFailure(pathError);
+        }
+
+        var path = archivePath.Trim();
+        var arguments = WslcCommandBuilder.BuildLoadArguments(path);
+        var commandLine = $"wslc {arguments}";
+        var stopwatch = Stopwatch.StartNew();
+
+        // 回调来自读取线程（stdout / stderr 各一个），累计结果必须加锁
+        var loaded = new List<string>();
+        var gate = new object();
+
+        void HandleLine(string line)
+        {
+            if (!ImageArchiveParser.TryParseLoadedReference(line, out var reference)) return;
+
+            lock (gate)
+            {
+                if (loaded.Any(x => string.Equals(x, reference, StringComparison.OrdinalIgnoreCase))) return;
+                loaded.Add(reference);
+            }
+
+            // 导入没有字节数可报，能报的就是"已经加载了哪些"
+            onProgress?.Invoke(new ImageArchiveProgress { Status = $"已加载 {reference}" });
+        }
+
+        onProgress?.Invoke(new ImageArchiveProgress
+        {
+            Status = $"正在读取 {Path.GetFileName(path)}（{ImageArchiveProgress.FormatSize(TryGetFileLength(path))}）…"
+        });
+
+        try
+        {
+            var result = await _runner.RunStreamingAsync(
+                _wslcExecutable,
+                arguments,
+                HandleLine,
+                HandleLine,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            stopwatch.Stop();
+
+            IReadOnlyList<string> references;
+            lock (gate)
+            {
+                references = loaded.ToList();
+            }
+
+            if (!result.IsSuccess)
+            {
+                return new ImageArchiveResult
+                {
+                    Success = false,
+                    Message = ImageArchiveParser.ExtractError(
+                        result.StandardError,
+                        result.StandardOutput,
+                        ImageArchiveParser.DescribeFailure(isExport: false)),
+                    Path = path,
+                    CommandLine = commandLine,
+                    Duration = stopwatch.Elapsed,
+                    References = references
+                };
+            }
+
+            return new ImageArchiveResult
+            {
+                Success = true,
+                Message = references.Count == 0
+                    // 退出码 0 但一行都没报：可能是归档里没有镜像，也可能引擎换了措辞。
+                    // 不当失败（镜像确实可能已经进来了），但也不假装"导入了 N 个"。
+                    ? "引擎报告成功，但没有报告任何镜像（归档可能是空的，或引擎改了口径）"
+                    : $"已导入 {references.Count} 个镜像",
+                Path = path,
+                CommandLine = commandLine,
+                Duration = stopwatch.Elapsed,
+                References = references
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            stopwatch.Stop();
+            IReadOnlyList<string> references;
+            lock (gate)
+            {
+                references = loaded.ToList();
+            }
+
+            return new ImageArchiveResult
+            {
+                Success = false,
+                Cancelled = true,
+                // 已加载的部分引擎已经落盘了，如实说清楚，别让用户以为"取消了就等于什么都没发生"
+                Message = references.Count == 0
+                    ? "已取消导入"
+                    : $"已取消导入；取消前已加载 {references.Count} 个镜像（它们已在本地列表中）",
+                Path = path,
+                CommandLine = commandLine,
+                Duration = stopwatch.Elapsed,
+                References = references
+            };
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            return new ImageArchiveResult
+            {
+                Success = false,
+                Message = ex.Message,
+                Path = path,
+                CommandLine = commandLine,
+                Duration = stopwatch.Elapsed
+            };
+        }
+    }
+
+    private static ImageArchiveResult ArchiveFailure(string message)
+        => new() { Success = false, Message = message };
+
+    private static long TryGetFileLength(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? new FileInfo(path).Length : 0;
+        }
+        catch
+        {
+            // 文件正被引擎写入时长度读取可能失败，当作"还没写出来"，不打断轮询
+            return 0;
+        }
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch
+        {
+            // 删不掉（仍被占用）不该盖掉真正的错误原因
+        }
+    }
+
     // ---------- 网络 ----------
 
     public async Task<bool> CreateNetworkAsync(string name, string driver = "bridge", CancellationToken cancellationToken = default)
