@@ -1,4 +1,4 @@
-# wslc-desktop
+﻿# wslc-desktop
 
 [中文](README.md) | **English**
 
@@ -10,17 +10,17 @@ neither the .NET runtime nor the Windows App SDK runtime.
 
 | Module | What it does |
 | --- | --- |
-| Containers | List with live CPU / memory, start / stop / restart / force-kill / delete (all behind a confirmation), batch operations, one-click port open, detail flyout (inspect / **log snapshot + live follow inside the panel** / one-shot exec) |
+| Containers | List with live CPU / memory, start / stop / restart / force-kill / delete (all behind a confirmation), batch operations, one-click port open, detail flyout (inspect / **log snapshot + live follow + save to file** / **cancellable command execution** — output streams live and Stop signals the process inside the container) |
 | Images | A **pull dialog** (registry / repository / tag as separate fields; the registry list is the built-in accelerators plus Docker Hub **plus any sources you added yourself**, 10 common-image shortcuts, one-click **tag listing** sorted "latest first → versions descending", and automatic download-size measurement for the selected tag), **private-registry authentication** (configure credentials once in Settings; they are applied automatically per registry when listing tags or pulling), **rename / re-tag**, local table, pull progress (cancellable), delete, create a container from an image in one click |
 | Networks / Volumes / Sessions | List, create and remove (built-in networks are protected; consequences are spelled out before deletion) |
 | WSL distros | `wsl -l -v` + registry Lxss: state / version / default / install location / VHDX size, start / terminate / set default / open terminal / unregister |
 | Add a distro | Import a local package (`.tar` / `.tar.gz` / `.tar.xz` / `.vhdx` / `.wsl` — the install method is picked from the extension) or install **online** from the Microsoft catalogue (`wsl --list --online`); includes **pre-flight checks** (duplicate name / target directory / extension) and a **live equivalent-command preview**, with the install streamed and cancellable |
 | Distro details | Compact the disk (reclaim freed blocks), toggle the sparse disk, resize the disk, **move the install location**, **export to a tar archive** (shows bytes written, cancellable), edit `/etc/wsl.conf` (auto-backed up before saving), set the default user, open the install location |
-| Create container | Full form + **live equivalent-command preview** (shares the exact same command-assembly logic as the real run), can prefill ports and the startup command from an image inspect |
+| Create container | Full form + **live equivalent-command preview** (shares the exact same command-assembly logic as the real run), can prefill ports and the startup command from an image inspect; supports **GPU passthrough (`--gpus all`)**, hostname / domain name, memory and CPU limits (memory units are normalised to upper case) |
 | Settings | Panel preferences, **registry management** (one list covering built-in and custom sources: a radio marks the default, a "show" checkbox decides whether it appears in the dropdown, editing sets the note and credential, deleting removes custom sources — with search and scrolling), and `settings.yaml` in **two modes: form ↔ raw YAML** (line-based replacement to preserve comments, timestamped backup before every save) |
 | Event stream | A long-lived `wslc events` subscription drives instant refresh (reconnect + resume with de-duplication); polling is the fallback |
 | Desktop integration | Tray resident, close-to-tray, single instance, shortcuts `F5` / `Ctrl+R` / `Ctrl+N` / `Ctrl+1–8`, Mica and instant light / dark switching |
-| About | Environment self-check (engine / kernel / missing components) + update check and **in-place update** against GitHub Releases (download → sha256 verify → swap → auto restart, previous build kept as `.old`) |
+| About | Environment self-check (engine / kernel / missing components) + **one-click install / repair of engine components** (with progress and a post-install re-check) + **diagnostics bundle export** (versions / engine / sessions / API-channel state + redacted preferences + log tail) + update check and **in-place update** against GitHub Releases (download → sha256 verify → swap → auto restart, previous build kept as `.old`) |
 
 ## Requirements
 
@@ -92,8 +92,10 @@ The application name is always the repository name, **`wslc-desktop`** — there
 ## Known limitations
 
 - The official `wslc compose` has not shipped yet, so no orchestration layer is built in
-- Interactive terminals and `logs -f` following are handed off to Windows Terminal (`wt`), falling back to a
-  console window when unavailable
+- **Log following now lives inside the panel** (snapshot + live follow + save to a text file). Interactive
+  programs (`vi` / `top`, anything that needs a TTY) are still handed off to Windows Terminal (`wt`), falling
+  back to a console window when unavailable — the official API exposes byte streams but no PTY, and a
+  self-built terminal is out of scope here
 - **In-place update** is a manual flow — nothing is downloaded or replaced until you confirm, and there is no
   silent background auto-update. Each update is a full ~96 MB download (GitHub provides no binary deltas)
 - In-place update requires a **writable** program directory: when the app sits in `C:\Program Files\` or
@@ -101,13 +103,13 @@ The application name is always the repository name, **`wslc-desktop`** — there
   than downloading 96 MB before failing
 - Update packages are unsigned; integrity relies on the **sha256 digest** of the GitHub release asset. Because
   the app downloads the file itself (no browser Mark-of-the-Web), SmartScreen does not block the swap
-- Pull progress uses two channels, with the official C# API preferred: **the API channel yields real byte
-  counts**, so the bar is determinate with a percentage. When the probe fails (engine missing, components
-  incomplete, no attachable engine session) it **falls back to the CLI automatically** — there the engine
-  returns only a status keyword, so the bar is indeterminate with status text. The "official API channel"
-  toggle in Settings forces the CLI path. This channel only ever **attaches to an existing engine session
-  and never creates one**, so the worst case is a CLI fallback rather than images landing somewhere the CLI
-  cannot see
+- **Pull progress comes from the CLI by default** (indeterminate bar). The official C# API channel only yields
+  real byte counts when it can attach to an engine session. Measured constraint: the official API treats a
+  session name as a **machine-wide unique key owned by the process that created it** — the CLI keeps its
+  containers in `wslc-cli-<user>`, owned by `wslc.exe`, so the panel can only perform a **read-only attach**
+  and falls back to the CLI otherwise. Settings → "Official API channel" shows the **actual state**
+  (available / read-only attach / reason unavailable): better to tell you "this is CLI right now" than to
+  pretend there is API acceleration
 - **Private-registry credentials are configured once in Settings → Private registry credentials** and then
   applied automatically per registry: passwords are encrypted with **Windows DPAPI (current user)** before
   landing in the local `prefs.json` — plaintext is never written to disk or to logs, and the blob is
