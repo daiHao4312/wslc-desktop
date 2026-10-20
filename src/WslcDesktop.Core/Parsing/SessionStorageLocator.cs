@@ -16,12 +16,25 @@ public static class SessionStorageLocator
     private const string SwapFileName = "swap.vhdx";
 
     public static string GetSessionsRoot(string? localAppDataOverride = null)
-    {
-        var localAppData = localAppDataOverride
-            ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        => Path.Combine(GetStorageRoot(localAppDataOverride), "wslc", "sessions");
 
-        return Path.Combine(localAppData, "wslc", "sessions");
-    }
+    /// <summary>
+    /// **存储根目录**（默认 <c>%LOCALAPPDATA%</c>）—— 这是要交给
+    /// <c>SessionSettings.StoragePath</c> 的那个值，**不是**会话目录。
+    ///
+    /// 实测依据（参考项目 PLAN-v0.2 记录的真机布局）：
+    /// <code>
+    /// &lt;storagePath&gt;\wslc\sessions\&lt;会话名&gt;\storage.vhdx
+    /// storagePath 未设置 → 实际使用 %LOCALAPPDATA%
+    /// </code>
+    /// 引擎自己在根目录下面拼 <c>wslc\sessions\&lt;会话名&gt;\</c>。
+    /// ⚠️ 传成会话目录的话，引擎会去找
+    /// <c>…\wslc\sessions\wslc-cli-X\wslc\sessions\wslc-cli-X\storage.vhdx</c> ——
+    /// 路径不存在，只会报一个 HRESULT 说不清的错（用户实测踩过）。
+    /// </summary>
+    public static string GetStorageRoot(string? localAppDataOverride = null)
+        => localAppDataOverride
+           ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
     /// <summary>按会话名匹配目录，补上 VHDX 路径与大小；匹配不到时保留原值。</summary>
     public static List<SessionModel> Enrich(IEnumerable<SessionModel> sessions, string? sessionsRoot = null)
@@ -50,6 +63,38 @@ public static class SessionStorageLocator
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// 会话目录（<c>…\wslc\sessions\&lt;会话名&gt;</c>）——<b>存在才返回</b>。
+    ///
+    /// 给官方 API 通道做"只附着、不新建"的前置校验用：目录不存在就说明目标会话
+    /// 并非当前引擎在用的那个，此时绝不能把路径交给 <c>Session</c>，
+    /// 否则会在磁盘上凭空多出一个 CLI 侧看不见的会话。
+    /// </summary>
+    public static string? FindExistingSessionDirectory(string sessionName, string? sessionsRoot = null)
+        => string.IsNullOrWhiteSpace(sessionName)
+            ? null
+            : FindSessionDirectory(sessionsRoot ?? GetSessionsRoot(), sessionName);
+
+    /// <summary>
+    /// 这个会话是不是真的在磁盘上有存储文件（<c>storage.vhdx</c>）。
+    ///
+    /// 比"目录存在"更强的判据：会话目录可能是残留的空目录，
+    /// 而引擎在用的那个一定有 <c>storage.vhdx</c>。
+    /// </summary>
+    public static bool HasStorageFile(string sessionDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(sessionDirectory)) return false;
+
+        try
+        {
+            return File.Exists(Path.Combine(sessionDirectory, StorageFileName));
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>会话存储总占用（所有会话的 storage.vhdx + swap.vhdx 之和，字节）。</summary>

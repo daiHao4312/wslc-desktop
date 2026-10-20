@@ -12,8 +12,10 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
+            <!-- 加载条行固定 4px（条本身的高度）：Auto 的话条一隐藏行高归零，表头会向上跳 4px -->
+            <RowDefinition Height="4" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <Grid Grid.Row="0">
@@ -27,6 +29,12 @@
             </StackPanel>
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button Click="AddDistro_Click" Style="{StaticResource AccentButtonStyle}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon FontSize="14" Glyph="&#xE710;" />
+                        <TextBlock Text="添加发行版" />
+                    </StackPanel>
+                </Button>
                 <Button Click="Diagnose_Click">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon FontSize="14" Glyph="&#xE9D9;" />
@@ -64,7 +72,7 @@
                 TextAlignment="Center"
                 TextWrapping="Wrap"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Text="本机没有注册任何 WSL 发行版，或 wsl.exe 不可用。容器功能不需要发行版；如需发行版，可在管理员终端执行 wsl --install -d Ubuntu。" />
+                Text="本机没有注册任何 WSL 发行版，或 wsl.exe 不可用。容器功能不需要发行版；点右上角「添加发行版」可从安装包导入或从微软清单在线安装。" />
         </StackPanel>
 
         <ListView
@@ -135,32 +143,57 @@
                         <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="6">
                             <Button
                                 Click="Start_Click"
-                                Tag="{x:Bind Name}"
+                                Tag="{x:Bind}"
                                 ToolTipService.ToolTip="启动发行版"
                                 Visibility="{x:Bind IsRunning, Converter={StaticResource InverseBoolToVisibilityConverter}, FallbackValue=Visible}">
                                 <FontIcon FontSize="12" Glyph="&#xE768;" />
                             </Button>
                             <Button
                                 Click="Terminate_Click"
-                                Tag="{x:Bind Name}"
+                                Tag="{x:Bind}"
                                 ToolTipService.ToolTip="终止发行版"
                                 Visibility="{x:Bind IsRunning, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}">
                                 <FontIcon FontSize="12" Glyph="&#xE71A;" />
                             </Button>
-                            <Button Click="OpenTerminal_Click" Tag="{x:Bind Name}" ToolTipService.ToolTip="在终端中进入">
+                            <Button Click="OpenTerminal_Click" Tag="{x:Bind}" ToolTipService.ToolTip="在终端中进入">
                                 <FontIcon FontSize="12" Glyph="&#xE756;" />
                             </Button>
+                            <!--
+                                菜单按"轻 → 重"分段：位置类 / 磁盘类 / 配置类 / 危险操作，
+                                分段而不是平铺，是为了让「注销」永远离常用项最远。
+                            -->
                             <Button ToolTipService.ToolTip="更多操作">
                                 <FontIcon FontSize="12" Glyph="&#xE712;" />
                                 <Button.Flyout>
                                     <MenuFlyout>
-                                        <MenuFlyoutItem Click="SetDefault_Click" Tag="{x:Bind Name}" Text="设为默认发行版">
+                                        <MenuFlyoutItem Click="SetDefault_Click" Tag="{x:Bind}" Text="设为默认发行版">
                                             <MenuFlyoutItem.Icon>
                                                 <FontIcon Glyph="&#xE8FB;" />
                                             </MenuFlyoutItem.Icon>
                                         </MenuFlyoutItem>
+                                        <MenuFlyoutItem Click="OpenLocation_Click" Tag="{x:Bind}" Text="打开安装位置">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE8B7;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+
                                         <MenuFlyoutSeparator />
-                                        <MenuFlyoutItem Click="Unregister_Click" Tag="{x:Bind Name}" Text="注销（删除发行版）">
+
+                                        <MenuFlyoutItem Click="Compact_Click" Tag="{x:Bind}" Text="压缩磁盘（回收已释放空间）" />
+                                        <MenuFlyoutItem Click="Resize_Click" Tag="{x:Bind}" Text="调整磁盘大小…" />
+                                        <MenuFlyoutItem Click="Move_Click" Tag="{x:Bind}" Text="移动安装位置…" />
+                                        <MenuFlyoutItem Click="Export_Click" Tag="{x:Bind}" Text="导出为 tar 归档…" />
+                                        <MenuFlyoutItem Click="EnableSparse_Click" Tag="{x:Bind}" Text="开启稀疏盘（自动回收空间）" />
+                                        <MenuFlyoutItem Click="DisableSparse_Click" Tag="{x:Bind}" Text="关闭稀疏盘" />
+
+                                        <MenuFlyoutSeparator />
+
+                                        <MenuFlyoutItem Click="EditWslConf_Click" Tag="{x:Bind}" Text="编辑 /etc/wsl.conf…" />
+                                        <MenuFlyoutItem Click="SetDefaultUser_Click" Tag="{x:Bind}" Text="设置默认用户…" />
+
+                                        <MenuFlyoutSeparator />
+
+                                        <MenuFlyoutItem Click="Unregister_Click" Tag="{x:Bind}" Text="注销（删除发行版）">
                                             <MenuFlyoutItem.Icon>
                                                 <FontIcon Glyph="&#xE74D;" />
                                             </MenuFlyoutItem.Icon>
@@ -173,5 +206,61 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
+
+        <!--
+            长操作（移动 / 导出）就地展示进度与引擎输出，不弹窗打扰。
+            与 AddDistroPage 的安装面板同构，只是这里的进度来自"轮询目标文件大小"。
+        -->
+        <Border
+            x:Name="OperationCard"
+            Grid.Row="4"
+            Padding="14,12"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Visibility="Collapsed">
+            <StackPanel Spacing="8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        x:Name="OperationTitleText"
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        FontWeight="Medium" />
+                    <Button
+                        x:Name="CancelOperationButton"
+                        Grid.Column="1"
+                        Padding="10,4"
+                        Click="CancelOperation_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon FontSize="12" Glyph="&#xE711;" />
+                            <TextBlock Text="取消" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+
+                <ProgressBar x:Name="OperationProgressBar" IsIndeterminate="True" />
+                <TextBlock
+                    x:Name="OperationStatusText"
+                    FontSize="12"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    TextWrapping="Wrap" />
+
+                <TextBox
+                    x:Name="OperationLogBox"
+                    Height="110"
+                    AcceptsReturn="True"
+                    FontFamily="Consolas"
+                    FontSize="12"
+                    IsReadOnly="True"
+                    TextWrapping="NoWrap"
+                    ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto" />
+            </StackPanel>
+        </Border>
     </Grid>
 </Page>

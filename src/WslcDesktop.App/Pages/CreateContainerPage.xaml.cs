@@ -155,7 +155,9 @@ public sealed partial class CreateContainerPage : Page
 
     private async Task LoadNetworksAsync()
     {
-        var preset = new List<string> { "bridge", "host", "none" };
+        // ⚠️ 不放 host：`--network host` 会被引擎明确拒绝（"host mode networking is not supported"），
+        // 放进去只会让用户点了、等一次、然后看一句英文报错。none 是支持的（隔离网络）。
+        var preset = new List<string> { "bridge", "none" };
         try
         {
             var networks = await _client.GetNetworksAsync(_pageCts.Token);
@@ -245,6 +247,14 @@ public sealed partial class CreateContainerPage : Page
                 return;
             }
 
+            // 内存单位必须是**大写**（512M 可以、512m 会被引擎拒），在提交前拦下来
+            if (!ContainerOptionRules.TryNormalizeMemory(MemoryBox.Text, out _, out var memoryError))
+            {
+                ShowMessage(memoryError, InfoBarSeverity.Error);
+                MemoryBox.Focus(FocusState.Programmatic);
+                return;
+            }
+
             ShowMessage("正在创建容器…", InfoBarSeverity.Informational);
 
             var result = await _client.CreateContainerAsync(options);
@@ -283,22 +293,34 @@ public sealed partial class CreateContainerPage : Page
         => WslcDesktop.Core.Parsing.WslcCommandBuilder.BuildRunCommandLine(options);
 
     /// <summary>表单 → 参数对象。多行输入按行拆，去空行与行内注释。</summary>
-    private ContainerCreateOptions BuildOptions() => new()
+    private ContainerCreateOptions BuildOptions()
     {
-        Image = (ImageCombo.Text ?? string.Empty).Trim(),
-        Name = NullIfBlank(NameBox.Text),
-        Command = NullIfBlank(CommandBox.Text),
-        Ports = SplitLines(PortsBox.Text),
-        EnvironmentVariables = SplitLines(EnvBox.Text),
-        Volumes = VolumeRows.Select(r => r.ToMount()).OfType<string>().ToList(),
-        Network = NullIfBlank(NetworkCombo.Text),
-        Memory = NullIfBlank(MemoryBox.Text),
-        Cpus = NullIfBlank(CpusBox.Text),
-        Workdir = NullIfBlank(WorkdirBox.Text),
-        Hostname = NullIfBlank(HostnameBox.Text),
-        PullPolicy = (PullPolicyCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? "missing",
-        RemoveOnExit = RemoveOnExitToggle.IsOn
-    };
+        // 内存单位规范成大写后再拼命令：预览里显示的就是真正会执行的写法（512m → 512M）
+        var memory = NullIfBlank(MemoryBox.Text);
+        if (memory is not null && ContainerOptionRules.TryNormalizeMemory(memory, out var normalizedMemory, out _))
+        {
+            memory = normalizedMemory;
+        }
+
+        return new ContainerCreateOptions
+        {
+            Image = (ImageCombo.Text ?? string.Empty).Trim(),
+            Name = NullIfBlank(NameBox.Text),
+            Command = NullIfBlank(CommandBox.Text),
+            Ports = SplitLines(PortsBox.Text),
+            EnvironmentVariables = SplitLines(EnvBox.Text),
+            Volumes = VolumeRows.Select(r => r.ToMount()).OfType<string>().ToList(),
+            Network = NullIfBlank(NetworkCombo.Text),
+            Memory = memory,
+            Cpus = NullIfBlank(CpusBox.Text),
+            Workdir = NullIfBlank(WorkdirBox.Text),
+            Hostname = NullIfBlank(HostnameBox.Text),
+            DomainName = NullIfBlank(DomainNameBox.Text),
+            EnableGpu = GpuToggle.IsOn,
+            PullPolicy = (PullPolicyCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? "missing",
+            RemoveOnExit = RemoveOnExitToggle.IsOn
+        };
+    }
 
     private static IReadOnlyList<string> SplitLines(string? text)
     {

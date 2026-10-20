@@ -24,6 +24,19 @@ public record ReleaseInfo
 
     public string? AssetName { get; init; }
 
+    /// <summary>
+    /// 资产字节数。在线更新下载前用它估算进度与磁盘占用，缺省为 null（不阻塞流程）。
+    /// </summary>
+    public long? AssetSize { get; init; }
+
+    /// <summary>
+    /// 资产的 sha256（小写十六进制，不带 <c>sha256:</c> 前缀），来自 GitHub 的 <c>digest</c> 字段。
+    ///
+    /// 有它就把下载内容当作可验证的：校验不通过一律判为失败并删除落盘文件。
+    /// 老发布可能没有该字段，此时退回 Content-Length 长度校验。
+    /// </summary>
+    public string? AssetSha256 { get; init; }
+
     /// <summary>去掉前缀 v 的版本号，用于版本比较与展示。</summary>
     public string VersionDisplay => TagName.TrimStart('v', 'V').Trim();
 

@@ -38,6 +38,57 @@ public class ApiSurfaceExportTests
     }
 
     [Fact]
+    public void TestOfficialApiContract_ApiChannelMembersStillExist()
+    {
+        // M14 官方 API 通道（WslcApiSession / WslcApiSessionFactory）实际调用的成员。
+        // 投影仍在预览期、一期一变，这里做编译期之外的兜底：升级 SDK 后断了要立刻红。
+        var session = typeof(Session);
+
+        Assert.NotNull(session.GetConstructor(new[] { typeof(SessionSettings) }));
+        Assert.NotNull(session.GetMethod("Start", Type.EmptyTypes));
+        Assert.NotNull(session.GetMethod("GetImages", Type.EmptyTypes));
+        Assert.NotNull(session.GetMethod("PullImageAsync", new[] { typeof(PullImageOptions) }));
+        Assert.True(typeof(IDisposable).IsAssignableFrom(session));
+
+        // 会话锚点：必须能按 (名称, 存储路径) 定位到引擎已有的那个会话
+        Assert.NotNull(typeof(SessionSettings).GetConstructor(new[] { typeof(string), typeof(string) }));
+
+        // 私有仓库凭据——只有 API 通道能带（CLI 的 pull 没有这个参数）
+        Assert.NotNull(typeof(PullImageOptions).GetProperty("RegistryAuth"));
+
+        // 私有仓库认证（M16b）：Session.Authenticate → AuthenticateResult.IdentityToken
+        Assert.NotNull(session.GetMethod("Authenticate", new[] { typeof(Uri), typeof(string), typeof(string) }));
+        Assert.NotNull(typeof(AuthenticateResult).GetProperty("IdentityToken"));
+        Assert.NotNull(typeof(AuthenticateResult).GetProperty("TokenType"));
+
+        // 真实字节数——API 相对 CLI 的唯一硬优势（CLI 只回状态关键字），
+        // 也是界面从"不确定进度条"升级到"确定进度条 + 百分比"的依据
+        foreach (var name in new[] { "CurrentBytes", "TotalBytes", "Status", "Id" })
+        {
+            Assert.NotNull(typeof(ImageProgress).GetProperty(name));
+        }
+
+        // 容器内可管理的进程（M19）：OpenContainer → CreateProcess → Start/Signal
+        // 这是"执行命令能停止"的唯一依据 —— CLI 的 exec 杀不掉容器内进程
+        Assert.NotNull(session.GetMethod("OpenContainer", new[] { typeof(string), typeof(ProcessOutputMode) }));
+        Assert.NotNull(typeof(Container).GetMethod("CreateProcess", new[] { typeof(ProcessSettings) }));
+        Assert.NotNull(typeof(Process).GetMethod("Start", Type.EmptyTypes));
+        Assert.NotNull(typeof(Process).GetMethod("Signal", new[] { typeof(Signal) }));
+        Assert.NotNull(typeof(Process).GetProperty("Pid"));
+        Assert.NotNull(typeof(Process).GetProperty("ExitCode"));
+        Assert.NotNull(typeof(ProcessSettings).GetProperty("CommandLine"));
+        Assert.NotNull(typeof(ProcessSettings).GetProperty("OutputMode"));
+
+        // ⚠️ 输出的回调参数是**原始字节**、退出回调是 int —— 拼行与 UTF-8 解码必须自己做
+        // （见 WslcApiSession 里的 Utf8LineSplitter；这条断言锁住"为什么需要它"）
+        var outputInvoke = typeof(ProcessOutputHandler).GetMethod("Invoke")!;
+        Assert.Equal(typeof(byte[]), outputInvoke.GetParameters()[0].ParameterType);
+
+        var exitInvoke = typeof(ProcessExitHandler).GetMethod("Invoke")!;
+        Assert.Equal(typeof(int), exitInvoke.GetParameters()[0].ParameterType);
+    }
+
+    [Fact]
     public void ExportApiSurface_ToProjectDocs()
     {
         var asm = Assembly.Load("wslcsdkcs");

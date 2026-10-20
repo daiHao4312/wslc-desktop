@@ -4,6 +4,20 @@
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <!--
+      必须与 App 项目保持一致（App 里早就有这一行）。
+
+      官方 Microsoft.WSL.Containers 3.0.3 的 WinRT 投影是按 Windows SDK 投影包
+      10.0.26100.80（程序集 10.0.26100.79）构建的；而 .NET SDK 10.0.402 对
+      net10.0-windows10.0.26100.0 的默认解析结果是 10.0.26100.57（程序集 .38）。
+      只要 Core 真正用到投影类型（如 Session / PullImageOptions / ImageProgress），
+      编译器就会报 CS1705「wslcsdkcs 所使用的 Microsoft.Windows.SDK.NET 版本高于所引用的」。
+
+      以前 Core 只调 WslcService 的静态方法，不深究 WinRT 类型，所以没暴露这个问题；
+      API 通道（M14）一旦触碰 Session 就必须钉住这一版。
+    -->
+    <WindowsSdkPackageVersion>10.0.26100.80</WindowsSdkPackageVersion>
   </PropertyGroup>
 
   <ItemGroup>

@@ -105,6 +105,7 @@
         <ListView
             x:Name="ImagesListView"
             Grid.Row="2"
+            Margin="0,20,0,0"
             Padding="0,0,0,64"
             IsMultiSelectCheckBoxEnabled="False"
             ItemContainerStyle="{StaticResource DataRowItemStyle}"
@@ -123,7 +124,7 @@
                             <ColumnDefinition Width="3*" />
                             <ColumnDefinition Width="2*" />
                             <ColumnDefinition Width="1*" />
-                            <ColumnDefinition Width="88" />
+                            <ColumnDefinition Width="132" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="1" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="镜像 / 仓库" />
                         <TextBlock Grid.Column="2" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="ID / 创建时间" />
@@ -140,7 +141,7 @@
                             <ColumnDefinition Width="3*" />
                             <ColumnDefinition Width="2*" />
                             <ColumnDefinition Width="1*" />
-                            <ColumnDefinition Width="88" />
+                            <ColumnDefinition Width="132" />
                         </Grid.ColumnDefinitions>
 
                         <!--
@@ -192,6 +193,12 @@
                                 Tag="{x:Bind FullName}"
                                 ToolTipService.ToolTip="用此镜像创建容器">
                                 <FontIcon FontSize="12" Glyph="&#xE710;" />
+                            </Button>
+                            <Button
+                                Click="RenameImage_Click"
+                                Tag="{x:Bind FullName}"
+                                ToolTipService.ToolTip="改标签 / 重命名（同一个镜像可以挂多个名字）">
+                                <FontIcon FontSize="12" Glyph="&#xE8AC;" />
                             </Button>
                             <Button
                                 Click="Delete_Click"

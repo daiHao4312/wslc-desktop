@@ -12,7 +12,8 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
+            <!-- 加载条行固定 4px（条本身的高度）：Auto 的话条一隐藏行高归零，表头会向上跳 4px -->
+            <RowDefinition Height="4" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 

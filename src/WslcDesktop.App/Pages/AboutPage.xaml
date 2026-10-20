@@ -14,6 +14,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <StackPanel Grid.Row="0" Spacing="4">
@@ -93,6 +94,25 @@
                         IsClosable="True"
                         IsOpen="False" />
 
+                    <!-- 下载进度：只在下载期间显示，不占常驻高度 -->
+                    <StackPanel x:Name="UpdateProgressPanel" Spacing="6" Visibility="Collapsed">
+                        <ProgressBar x:Name="UpdateProgressBar" Maximum="100" Minimum="0" />
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                x:Name="UpdateProgressText"
+                                Grid.Column="0"
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="准备下载…"
+                                TextTrimming="CharacterEllipsis" />
+                            <Button x:Name="CancelUpdateButton" Grid.Column="1" Click="CancelUpdate_Click" Content="取消" />
+                        </Grid>
+                    </StackPanel>
+
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button x:Name="CheckUpdateButton" Click="CheckUpdate_Click" Style="{StaticResource AccentButtonStyle}">
                             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -100,6 +120,31 @@
                                 <TextBlock Text="检查更新" />
                             </StackPanel>
                         </Button>
+
+                        <!-- 在线更新：有新版才出现的两个按钮，下载完把"下载"换成"安装" -->
+                        <Button
+                            x:Name="DownloadUpdateButton"
+                            Click="DownloadAndUpdate_Click"
+                            Visibility="Collapsed">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon FontSize="14" Glyph="&#xE896;" />
+                                <TextBlock x:Name="DownloadUpdateButtonText" Text="下载并更新" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button
+                            x:Name="InstallUpdateButton"
+                            Click="InstallUpdate_Click"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Visibility="Collapsed">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon FontSize="14" Glyph="&#xE777;" />
+                                <TextBlock Text="重启并安装" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button x:Name="OpenDownloadPageButton" Click="OpenDownloadPage_Click" Content="打开下载页" Visibility="Collapsed" />
+
                         <Button Click="CopyVersionInfo_Click" Content="复制版本信息" />
                     </StackPanel>
 
@@ -107,7 +152,7 @@
                         FontSize="12"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         TextWrapping="Wrap"
-                        Text="更新检查只比对版本号并给出下载落点，不会自动下载或替换正在运行的程序；检查会访问 GitHub，不发任何本机数据。" />
+                        Text="更新检查与下载都会访问 GitHub，不上传任何本机数据；下载完成后由你决定何时替换并重启。替换只动程序自己那个 exe，旧版本会保留为同目录下的 .old 备份。" />
                 </StackPanel>
             </Border>
 
@@ -166,9 +211,28 @@
                     </Grid>
 
                     <StackPanel Orientation="Horizontal" Spacing="8">
+                        <!-- 只在检测到缺失组件时出现：组件齐全时它没有意义 -->
+                        <Button
+                            x:Name="RepairComponentsButton"
+                            Click="RepairComponents_Click"
+                            Content="一键安装/修复"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Visibility="Collapsed" />
                         <Button Click="CopyUpgradeCommand_Click" Content="复制升级命令" />
                         <Button Click="OpenWslcPrompt_Click" Content="在终端中使用 wslc" />
                         <Button Click="RefreshCheck_Click" Content="重新检测" />
+                    </StackPanel>
+
+                    <StackPanel
+                        x:Name="RepairProgressPanel"
+                        Spacing="6"
+                        Visibility="Collapsed">
+                        <ProgressBar x:Name="RepairProgressBar" IsIndeterminate="True" />
+                        <TextBlock
+                            x:Name="RepairStatusText"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            TextWrapping="Wrap" />
                     </StackPanel>
 
                     <TextBlock
@@ -176,6 +240,44 @@
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Text="已知边界：官方 wslc compose 尚未发布，本面板不自研编排层；交互式终端与日志跟随交由 Windows Terminal；渲染与真实交互需在本机实测。"
                         TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!--
+                诊断（M20）：包里只放版本、状态与计数，不放容器环境变量与任何凭据。
+                prefs.json 会先脱敏（按字段名删除 password/token/secret/credential 类条目）。
+            -->
+            <Border
+                Grid.Row="4"
+                Padding="24"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+                <StackPanel Spacing="16">
+                    <TextBlock FontSize="16" FontWeight="SemiBold" Text="诊断" />
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="导出一个 zip：面板/引擎/会话版本、缺失组件、API 通道探测结果、容器与镜像计数，以及 error.log 末尾 300 行。包内不含容器环境变量与任何凭据（prefs.json 会先脱敏）。"
+                        TextWrapping="Wrap" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button
+                            x:Name="ExportDiagnosticsButton"
+                            Click="ExportDiagnostics_Click"
+                            Content="导出诊断包" />
+                        <Button
+                            x:Name="RevealDiagnosticsButton"
+                            Click="RevealDiagnostics_Click"
+                            Content="打开所在文件夹"
+                            Visibility="Collapsed" />
+                    </StackPanel>
+
+                    <InfoBar
+                        x:Name="DiagnosticsInfoBar"
+                        IsClosable="True"
+                        IsOpen="False"
+                        Severity="Success" />
                 </StackPanel>
             </Border>
         </Grid>

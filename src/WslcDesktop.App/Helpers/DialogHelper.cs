@@ -135,6 +135,61 @@ public static class DialogHelper
         await dialog.ShowAsync();
     }
 
+    /// <summary>
+    /// 多行文本编辑（如发行版内的 <c>/etc/wsl.conf</c>）。取消返回 null。
+    ///
+    /// 内容面板给**固定宽度**：ContentDialog 自己不吃 MinWidth/MaxWidth，
+    /// 靠内容撑开才是可靠的（见项目里"ContentDialog 宽度"那条踩坑记录）。
+    /// </summary>
+    public static async Task<string?> PromptMultilineAsync(
+        XamlRoot? xamlRoot,
+        string title,
+        string text,
+        string? helperText = null,
+        string confirmText = "保存")
+    {
+        if (xamlRoot is null) return null;
+
+        var input = new TextBox
+        {
+            Text = text,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.NoWrap,
+            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+            FontSize = 12,
+            Height = 280
+        };
+
+        ScrollViewer.SetHorizontalScrollBarVisibility(input, ScrollBarVisibility.Auto);
+        ScrollViewer.SetVerticalScrollBarVisibility(input, ScrollBarVisibility.Auto);
+
+        var panel = new StackPanel { Spacing = 8, Width = 640 };
+        panel.Children.Add(input);
+
+        if (!string.IsNullOrWhiteSpace(helperText))
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = helperText,
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 12,
+                Opacity = 0.7
+            });
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = panel,
+            PrimaryButtonText = confirmText,
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = xamlRoot
+        };
+
+        return await dialog.ShowAsync() == ContentDialogResult.Primary ? input.Text : null;
+    }
+
     /// <summary>错误提示（引擎不可用、命令失败）。</summary>
     public static async Task ShowErrorAsync(XamlRoot? xamlRoot, string title, string message)
     {

@@ -25,6 +25,15 @@ public partial class App : Application
 
     public App()
     {
+        // ---- 在线更新的辅助进程必须在这里分流（M13）----
+        // 它本质上是"第二个实例"（被主进程拉起，负责等旧进程退出后替换 exe），
+        // 一旦走到下面的单实例门闸就会被判成后开的那份而自杀，所以判定必须抢在最前面。
+        // 参数里没有协议开关时立刻返回 false，正常启动路径零影响。
+        if (UpdateHelper.TryRunAsHelper(Environment.GetCommandLineArgs().Skip(1).ToArray()))
+        {
+            return; // 理论上到不了：TryRunAsHelper 内部已 Environment.Exit
+        }
+
         InitializeComponent();
 
         // 单实例门闸要在建窗口之前判定：多开意味着多个 wslc events 子进程、
@@ -99,8 +108,34 @@ public partial class App : Application
     {
         var services = new ServiceCollection();
 
-        // 数据通道：CompositeWslcClient = CLI 兜底（CliWslcClient）+ 官方 WslcService 探测
-        services.AddSingleton<IWslcClient, CompositeWslcClient>();
+        // 数据通道：CLI 是主力（列表类查询信息比 API 更全），官方 API 只补它拿不到的能力
+        services.AddSingleton<CliWslcClient>();
+        // 官方 API 通道（M14）：能力探测 + 会话附着 + 真实字节进度拉取。
+        // 探测不通过（引擎缺失 / 组件不全 / 找不到可附着会话）会自动回落 CLI，不会打断主流程。
+        services.AddSingleton<IWslcApiChannel>(sp =>
+        {
+            var cli = sp.GetRequiredService<CliWslcClient>();
+            var prefs = sp.GetRequiredService<IPrefsService>();
+            return new WslcApiChannel(
+                sessionProvider: cancellationToken => cli.GetSessionsAsync(cancellationToken),
+                isEnabled: () => prefs.GetPreferences().UseApiChannel);
+        });
+        services.AddSingleton<IWslcClient>(sp => new CompositeWslcClient(
+            sp.GetRequiredService<CliWslcClient>(),
+            sp.GetService<IWslcApiChannel>()));
+        // 镜像仓库（Registry V2）查询：tag 列表与下载体积。官方 API 与 wslc 都不提供，只能直接问 registry
+        services.AddSingleton<IRegistryClient, CurlRegistryClient>();
+        // 引擎组件安装/修复（M20）：官方 WslcService 静态能力，不依赖会话
+        services.AddSingleton<IEnvironmentRepairService, WslcEnvRepair>();
+
+        // 镜像源与凭据（M16c）：Store 只管持久化与加解密，Service 管业务规则（默认唯一、内置不可删…）
+        services.AddSingleton<RegistrySourceStore>();
+        services.AddSingleton<RegistrySourceService>();
+        // 「镜像源 → 令牌」的唯一入口：凭据来自设置页，换令牌走官方 API 通道。
+        // 通道在设置里被关掉时它仍会被解析出来，只是每次换令牌都会如实报"通道不可用"。
+        services.AddSingleton(sp => new RegistryAuthService(
+            sp.GetRequiredService<RegistrySourceStore>(),
+            sp.GetService<IWslcApiChannel>()));
         // 发行版通道（wsl.exe + 注册表 Lxss），与容器通道相互独立
         services.AddSingleton<IDistroService, DistroService>();
         // 面板自身偏好（%LOCALAPPDATA%\WslcDesktop\prefs.json），与 wslc 的 settings.yaml 隔离
@@ -111,6 +146,8 @@ public partial class App : Application
         services.AddSingleton<IEventStreamService, EventStreamService>();
         // 应用自身更新检查（GitHub Releases），与容器数据通道无关
         services.AddSingleton<IUpdateChecker, UpdateChecker>();
+        // 更新包下载（M13 在线更新）：与检查分离，检查失败不影响已有下载结果
+        services.AddSingleton<IUpdateDownloader, UpdateDownloader>();
 
         return services.BuildServiceProvider();
     }
@@ -126,6 +163,10 @@ public partial class App : Application
             Exit();
             return;
         }
+
+        // 清理上一轮在线更新留下的残骸（已用过的包、半成品）。
+        // 放后台：扫目录+删文件是纯 IO，不该拖慢窗口出现
+        _ = Task.Run(UpdateHelper.CleanUpAfterUpdate);
 
         _mainWindow = new MainWindow();
 

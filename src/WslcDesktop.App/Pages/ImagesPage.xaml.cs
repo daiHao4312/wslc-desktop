@@ -4,6 +4,9 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using WslcDesktop.Core.Abstractions;
 using WslcDesktop.Core.Models;
+using WslcDesktop.Core.Parsing;
+using WslcDesktop.Core.Services;
+using WslcDesktop.Dialogs;
 using WslcDesktop.Helpers;
 
 namespace WslcDesktop.Pages;
@@ -11,6 +14,13 @@ namespace WslcDesktop.Pages;
 public sealed partial class ImagesPage : Page, IRefreshable
 {
     private readonly IWslcClient _client;
+    private readonly IRegistryClient _registryClient;
+
+    /// <summary>私有仓库的令牌由它按镜像源自动取（凭据存在设置页）。</summary>
+    private readonly RegistryAuthService _registryAuth;
+
+    /// <summary>镜像源列表与默认源：下拉候选与初值都从它拿，不在页面里拼。</summary>
+    private readonly RegistrySourceService _registrySources;
     private readonly CancellationTokenSource _pageCts = new();
 
     private CancellationTokenSource? _pullCts;
@@ -21,6 +31,10 @@ public sealed partial class ImagesPage : Page, IRefreshable
     {
         InitializeComponent();
         _client = App.Services.GetRequiredService<IWslcClient>();
+        _registryClient = App.Services.GetRequiredService<IRegistryClient>();
+        // 通道不可用时它会明确报"通道不可用"（而不是拿匿名去撞 401），所以这里不必判断
+        _registryAuth = App.Services.GetRequiredService<RegistryAuthService>();
+        _registrySources = App.Services.GetRequiredService<RegistrySourceService>();
     }
 
     protected override async void OnNavigatedTo(NavigationEventArgs e)
@@ -182,23 +196,116 @@ public sealed partial class ImagesPage : Page, IRefreshable
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
         => await RefreshAsync(userInitiated: true);
 
+    // ---------------- 拉取 ----------------
+
     private async void PullButton_Click(object sender, RoutedEventArgs e)
     {
         if (_isPulling) return;
 
-        var reference = await DialogHelper.PromptTextAsync(
-            XamlRoot,
-            "拉取镜像",
-            "例如 alpine:latest 或 docker.1panel.live/library/nginx:latest",
-            "开始拉取",
-            "直连 Docker Hub 在国内网络下常超时，可改用加速源前缀（需自行测速）。");
+        // 表单放在对话框里：三段输入直接铺在页面上，窄窗口下会挤成一团
+        var dialog = new PullImageDialog(
+            _registryClient,
+            _registryAuth,
+            _registrySources.EnabledHosts(),
+            _registrySources.EffectiveDefaultHost)
+        {
+            XamlRoot = XamlRoot
+        };
 
-        if (string.IsNullOrWhiteSpace(reference)) return;
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (dialog.ResultReference is not { Length: > 0 } reference) return;
 
-        await PullAsync(reference);
+        await PullAsync(reference, dialog.ResultRegistryAuth);
     }
 
-    private async Task PullAsync(string reference)
+    // ---------------- 改标签 / 重命名 ----------------
+
+    /// <summary>
+    /// 把镜像改成另一个引用。
+    ///
+    /// <c>wslc tag</c> 只是**新增一个引用**（同一个镜像 ID 会同时挂两个名字），
+    /// 所以这里补一步 <c>wslc rmi</c> 删掉旧名字 —— 两步分开报，
+    /// 避免"看着成功了其实旧名字还留着"。
+    /// </summary>
+    private async void RenameImage_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string source } || _isPulling) return;
+
+        var target = await DialogHelper.PromptTextAsync(
+            XamlRoot,
+            "重命名镜像",
+            "my-alpine:3.20",
+            "下一步",
+            $"当前引用：{source}\n新引用可以不带 registry 前缀，例如 my-alpine:3.20。");
+
+        if (string.IsNullOrWhiteSpace(target)) return;
+
+        target = target.Trim();
+
+        if (!RegistryInput.TryValidateTagReference(target, out var error))
+        {
+            _ = DialogHelper.ShowErrorAsync(XamlRoot, "引用不合法", error);
+            return;
+        }
+
+        if (string.Equals(target, source, StringComparison.Ordinal))
+        {
+            _ = DialogHelper.ShowErrorAsync(XamlRoot, "没有变化", "新引用与当前引用相同。");
+            return;
+        }
+
+        var confirmed = await DialogHelper.ConfirmDestructiveAsync(
+            XamlRoot,
+            "重命名镜像？",
+            $"将执行：{Environment.NewLine}" +
+            $"  1. wslc tag {source} {target}{Environment.NewLine}" +
+            $"  2. wslc rmi {source}{Environment.NewLine}{Environment.NewLine}" +
+            "删掉的只是旧**名字**，镜像本体不会消失。\n" +
+            "若这个镜像正被容器占用，第 2 步会被引擎拒绝 —— 那时新名字已经生效，旧的会一起留着。",
+            "重命名");
+
+        if (!confirmed) return;
+
+        LoadingBar.Visibility = Visibility.Visible;
+        try
+        {
+            var tagged = await _client.TagImageAsync(source, target, _pageCts.Token);
+            if (!tagged)
+            {
+                _ = DialogHelper.ShowErrorAsync(
+                    XamlRoot,
+                    "重命名失败",
+                    $"wslc tag 被引擎拒绝。旧引用未受影响：{source}");
+                return;
+            }
+
+            var removed = await _client.DeleteImageAsync(source, force: false, _pageCts.Token);
+            if (!removed && XamlRoot is not null)
+            {
+                _ = DialogHelper.ShowErrorAsync(
+                    XamlRoot,
+                    "新名字已生效，旧引用没删掉",
+                    $"wslc tag 成功，但 wslc rmi {source} 被拒绝（多半是镜像正被容器占用）。\n" +
+                    $"新引用 {target} 已可用，这个镜像现在同时挂两个名字。");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 页面已离开
+        }
+        catch (Exception ex)
+        {
+            _ = DialogHelper.ShowErrorAsync(XamlRoot, "重命名失败", ex.Message);
+        }
+        finally
+        {
+            LoadingBar.Visibility = Visibility.Collapsed;
+            await RefreshAsync(userInitiated: false);
+        }
+    }
+
+
+    private async Task PullAsync(string reference, string? registryAuth = null)
     {
         _isPulling = true;
         _completedLayers.Clear();
@@ -215,6 +322,7 @@ public sealed partial class ImagesPage : Page, IRefreshable
         {
             var result = await _client.PullImageAsync(
                 reference,
+                registryAuth,
                 progress => DispatcherQueue.TryEnqueue(() => ApplyProgress(progress)),
                 _pullCts.Token);
 
@@ -230,6 +338,7 @@ public sealed partial class ImagesPage : Page, IRefreshable
                 PullBar.IsIndeterminate = false;
                 PullBar.Value = 0;
                 PullStatusText.Text = result.Message;
+                // 失败就表单放回来，用户改个 tag 就能重试，不用再点一次页头按钮
                 _ = DialogHelper.ShowErrorAsync(XamlRoot, "拉取失败", result.Message);
             }
         }

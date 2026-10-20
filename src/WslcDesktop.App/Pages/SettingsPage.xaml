@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:WslcDesktop.Core.Models"
     mc:Ignorable="d">
 
     <Page.Resources>
@@ -206,14 +207,21 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Spacing="4">
-                                    <TextBlock Style="{StaticResource RowTitleStyle}" Text="默认 Registry 镜像源" />
-                                    <TextBlock Style="{StaticResource RowHintStyle}" Text="拉取镜像时未写域名前缀时使用的 Registry（直连 docker.io 在国内常超时）" />
+                                    <TextBlock Style="{StaticResource RowTitleStyle}" Text="官方 API 通道（镜像拉取真实进度）" />
+                                    <TextBlock Style="{StaticResource RowHintStyle}" Text="走官方 C# API 拉取镜像：拿得到真实下载字节数，进度条是确定态；CLI 通道只回状态关键字，只能是不确定态。引擎缺失、组件不全、找不到可附着的引擎会话时会自动回落 CLI，关掉此项则始终走 CLI。" />
+                                    <!-- 实际能不能用，得看探测结果：会话被 CLI 进程独占时只能"只读附着" -->
+                                    <TextBlock
+                                        x:Name="ApiChannelStatusText"
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="正在探测…"
+                                        TextWrapping="Wrap" />
                                 </StackPanel>
-                                <TextBox
-                                    x:Name="RegistryTextBox"
+                                <ToggleSwitch
+                                    x:Name="ApiChannelToggle"
                                     Grid.Column="1"
-                                    Style="{StaticResource RowTextBoxStyle}"
-                                    LostFocus="RegistryTextBox_LostFocus" />
+                                    Style="{StaticResource RowToggleStyle}"
+                                    Toggled="ApiChannelToggle_Toggled" />
                             </Grid>
                         </Border>
 
@@ -225,7 +233,7 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Spacing="4">
                                     <TextBlock Style="{StaticResource RowTitleStyle}" Text="更新检查仓库（GitHub）" />
-                                    <TextBlock Style="{StaticResource RowHintStyle}" Text="格式 owner/repo：关于页会用它的最新 Release 标签与本面板版本比较。留空则关闭检查；面板只读发布信息，不上传任何数据。" />
+                                    <TextBlock Style="{StaticResource RowHintStyle}" Text="格式 owner/repo：关于页用它的最新 Release 与本面板版本比较，并可从同一 Release 直接下载更新包。留空则关闭检查与在线更新；面板只读发布信息，不上传任何数据。" />
                                 </StackPanel>
                                 <TextBox
                                     x:Name="UpdateRepoTextBox"
@@ -234,6 +242,129 @@
                                     LostFocus="UpdateRepoTextBox_LostFocus" />
                             </Grid>
                         </Border>
+                    </StackPanel>
+                </Border>
+
+                <!--
+                    镜像源：内置站点与自定义源是**同一个实体**（Host / 备注 / 启用 / 默认 / 凭据），
+                    只有来源不同，所以只有一张列表、一套操作：
+                    默认 = 左侧单选组（全局唯一）、启用 = 一个「显示」勾选框、其余进「编辑」。
+                    不再有"两个设置默认的入口"和"从下拉移除 / 移除两种按钮"——
+                    那是把实现细节（隐藏 vs 删除）漏到了界面上。
+                -->
+                <Border Style="{StaticResource SettingsCardStyle}">
+                    <StackPanel Spacing="12">
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Spacing="4">
+                                <TextBlock Style="{StaticResource RowTitleStyle}" Text="镜像源" />
+                                <TextBlock Style="{StaticResource RowHintStyle}" Text="这张表就是「拉取镜像」里的镜像源下拉。左侧单选是默认源；不想让它出现在下拉里就取消「显示」（地址仍可手填拉取）；私有源点「编辑」配凭据。" />
+                            </StackPanel>
+
+                            <AutoSuggestBox
+                                x:Name="RegistrySearchBox"
+                                Grid.Column="1"
+                                Width="220"
+                                VerticalAlignment="Center"
+                                PlaceholderText="搜索主机名 / 备注"
+                                QueryIcon="Find"
+                                TextChanged="RegistrySearch_TextChanged" />
+
+                            <Button
+                                Grid.Column="2"
+                                VerticalAlignment="Center"
+                                Click="AddRegistry_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon FontSize="12" Glyph="&#xE710;" />
+                                    <TextBlock Text="添加镜像源" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+
+                        <InfoBar
+                            x:Name="RegistryInfoBar"
+                            IsClosable="True"
+                            IsOpen="False"
+                            Severity="Success" />
+
+                        <!--
+                            用 ListView 而不是手拼 StackPanel：
+                            ① 自带虚拟化与滚动，条目再多也不会把页面撑爆（限高 420）；
+                            ② 行结构由 DataTemplate 描述一次，不再在 code-behind 里 new Grid/new Button。
+                        -->
+                        <ListView
+                            x:Name="RegistryListView"
+                            MaxHeight="420"
+                            ItemContainerStyle="{StaticResource DataRowItemStyle}"
+                            SelectionMode="None">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="models:RegistrySource">
+                                    <Grid Padding="0,10" ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <RadioButton
+                                            Grid.Column="0"
+                                            MinWidth="0"
+                                            VerticalAlignment="Center"
+                                            Checked="RegistryDefault_Checked"
+                                            GroupName="RegistryDefault"
+                                            IsChecked="{x:Bind IsDefault}"
+                                            ToolTipService.ToolTip="设为默认镜像源" />
+
+                                        <StackPanel
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Spacing="2">
+                                            <TextBlock Style="{StaticResource RowTitleStyle}" Text="{x:Bind Host}" />
+                                            <TextBlock
+                                                MaxLines="2"
+                                                Style="{StaticResource RowHintStyle}"
+                                                Text="{x:Bind Subtitle}"
+                                                TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+
+                                        <CheckBox
+                                            Grid.Column="2"
+                                            MinWidth="0"
+                                            VerticalAlignment="Center"
+                                            Checked="RegistryEnabled_Checked"
+                                            Content="显示"
+                                            IsChecked="{x:Bind Enabled}"
+                                            Unchecked="RegistryEnabled_Unchecked" />
+
+                                        <Button
+                                            Grid.Column="3"
+                                            VerticalAlignment="Center"
+                                            Click="EditRegistry_Click"
+                                            Content="编辑" />
+
+                                        <Button
+                                            Grid.Column="4"
+                                            VerticalAlignment="Center"
+                                            Click="RemoveRegistry_Click"
+                                            Content="删除"
+                                            Visibility="{x:Bind CanRemove, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+
+                        <TextBlock
+                            x:Name="RegistryEmptyText"
+                            Style="{StaticResource RowHintStyle}"
+                            Text="没有匹配的镜像源。"
+                            Visibility="Collapsed" />
                     </StackPanel>
                 </Border>
 

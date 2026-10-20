@@ -307,7 +307,7 @@ public sealed partial class MainWindow : Window
         if (pageType == typeof(NetworksPage)) return "networks";
         if (pageType == typeof(VolumesPage)) return "volumes";
         if (pageType == typeof(SessionsPage)) return "sessions";
-        if (pageType == typeof(DistrosPage)) return "distros";
+        if (pageType == typeof(DistrosPage) || pageType == typeof(AddDistroPage)) return "distros";
         if (pageType == typeof(ActivityPage)) return "activity";
         if (pageType == typeof(AboutPage)) return "about";
         if (pageType == typeof(SettingsPage)) return "settings";

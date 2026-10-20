@@ -1,0 +1,130 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentDialog
+    x:Class="WslcDesktop.Dialogs.PullImageDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Title="拉取镜像"
+    CloseButtonText="取消"
+    DefaultButton="Primary"
+    PrimaryButtonClick="OnPrimaryButtonClick"
+    PrimaryButtonText="拉取"
+    mc:Ignorable="d">
+
+    <!--
+        对话框宽度**不受** ContentDialog 的 MinWidth/MaxWidth 属性控制：模板里内容宿主的尺寸
+        取自主题资源 ContentDialogMinWidth / ContentDialogMaxWidth，不覆盖这两个键设置一律无效。
+        （同 ContainerDetailDialog 的踩坑记录。）
+
+        ⚠️ 这里把两个键设成**同一个值**，这是刻意的：默认值是一个范围（320 / 548），
+        宿主宽度会取"内容期望宽度"从而**随内容变化** —— 实测选完镜像源/列完 tag 后
+        弹窗会忽宽忽窄。钉成同一个值之后宿主宽度恒定，内容再变也不会拖动窗口尺寸。
+    -->
+    <ContentDialog.Resources>
+        <x:Double x:Key="ContentDialogMinWidth">780</x:Double>
+        <x:Double x:Key="ContentDialogMaxWidth">780</x:Double>
+    </ContentDialog.Resources>
+
+    <StackPanel MinHeight="250" Spacing="16">
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="2*" />
+            </Grid.ColumnDefinitions>
+
+            <ComboBox
+                x:Name="RegistryCombo"
+                Grid.Column="0"
+                HorizontalAlignment="Stretch"
+                Header="镜像源"
+                IsEditable="True"
+                PlaceholderText="docker.1panel.live"
+                SelectionChanged="PullFormField_SelectionChanged"
+                TextSubmitted="PullFormField_TextSubmitted" />
+
+            <ComboBox
+                x:Name="RepositoryCombo"
+                Grid.Column="1"
+                HorizontalAlignment="Stretch"
+                Header="镜像仓库"
+                IsEditable="True"
+                PlaceholderText="例如 nginx 或 grafana/grafana"
+                SelectionChanged="PullFormField_SelectionChanged"
+                TextSubmitted="PullFormField_TextSubmitted" />
+
+            <ComboBox
+                x:Name="TagCombo"
+                Grid.Column="2"
+                HorizontalAlignment="Stretch"
+                Header="tag"
+                IsEditable="True"
+                PlaceholderText="留空 = latest"
+                SelectionChanged="PullFormField_SelectionChanged"
+                TextSubmitted="PullFormField_TextSubmitted" />
+        </Grid>
+
+        <Button x:Name="LoadTagsButton" HorizontalAlignment="Left" Click="LoadTags_Click">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <FontIcon FontSize="12" Glyph="&#xE721;" />
+                <TextBlock Text="列出 tag" />
+            </StackPanel>
+        </Button>
+
+        <!--
+            提示独占一行并限高两行：以前跟在按钮后面的横向 StackPanel 里，
+            文字一长就把内容期望宽度顶大 —— 那是弹窗宽度跳动的另一半原因。
+        -->
+        <TextBlock
+            x:Name="HintText"
+            MaxLines="2"
+            TextTrimming="CharacterEllipsis"
+            TextWrapping="Wrap"
+            FontSize="12"
+            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+        <Border
+            Padding="12,10"
+            Background="{ThemeResource ControlFillColorSecondaryBrush}"
+            BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="6">
+            <StackPanel Spacing="6">
+                <TextBlock FontSize="12" FontWeight="Medium" Text="将执行的拉取" />
+                <TextBlock
+                    x:Name="PreviewText"
+                    FontFamily="Consolas"
+                    FontSize="12"
+                    IsTextSelectionEnabled="True"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <!--
+            私有仓库的凭据统一在「设置 → 私有仓库凭据」里维护，这里只回显"这次会用哪个身份"。
+
+            原来这里是一块就地填用户名/密码的折叠区，两处存同一份凭据迟早会出现
+            "改了这边不生效"；而且弹窗是模态的，用户在这里填完也只能用一次。
+            「设置里配一次，以后自动用」正是这一步的目的。
+        -->
+        <Grid ColumnSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <FontIcon
+                Grid.Column="0"
+                VerticalAlignment="Top"
+                FontSize="14"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Glyph="&#xE72E;" />
+            <TextBlock
+                x:Name="CredentialStatusText"
+                Grid.Column="1"
+                FontSize="12"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                TextWrapping="Wrap" />
+        </Grid>
+    </StackPanel>
+</ContentDialog>

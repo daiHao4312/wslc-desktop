@@ -3,20 +3,33 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using WslcDesktop.Core.Abstractions;
+using WslcDesktop.Core.Models;
 using WslcDesktop.Core.Parsing;
+using WslcDesktop.Core.Services;
+using WslcDesktop.Dialogs;
 using WslcDesktop.Helpers;
 
 namespace WslcDesktop.Pages;
 
 /// <summary>
 /// 设置页（M9）。
-/// 两块配置严格分开：① 面板自身偏好（prefs.json）；② wslc 引擎配置（settings.yaml）。
+/// 三块配置严格分开：① 面板自身偏好（prefs.json）；② 镜像源与私有仓库凭据（同在 prefs.json，
+/// 但密码是 DPAPI 密文）；③ wslc 引擎配置（settings.yaml）。
 /// 引擎配置提供"表单 ↔ 原始 YAML"双模，且表单模式走逐行替换以保留注释（见 WslcSettingsEditor）。
 /// </summary>
 public sealed partial class SettingsPage : Page
 {
     private readonly IPrefsService _prefsService;
     private readonly IWslcSettingsService _engineSettings;
+
+    /// <summary>镜像源与凭据的业务规则层（默认唯一、内置不可删、删源连带删凭据…都在 Core 里）。</summary>
+    private readonly RegistrySourceService _registrySources;
+
+    /// <summary>保存凭据后顺手换一次令牌，把"密码对不对"当场问清楚。</summary>
+    private readonly RegistryAuthService _registryAuth;
+
+    /// <summary>官方 API 通道：只用于给设置页显示"现在到底能不能用"。</summary>
+    private readonly IWslcApiChannel? _apiChannel;
 
     private readonly Dictionary<string, TextBox> _fieldBoxes = new(StringComparer.OrdinalIgnoreCase);
     private bool _isLoaded;
@@ -27,6 +40,11 @@ public sealed partial class SettingsPage : Page
 
         _prefsService = App.Services.GetRequiredService<IPrefsService>();
         _engineSettings = App.Services.GetRequiredService<IWslcSettingsService>();
+        _registrySources = App.Services.GetRequiredService<RegistrySourceService>();
+        _registryAuth = App.Services.GetRequiredService<RegistryAuthService>();
+
+        // API 通道只用来"显示当前可用性"，取不到就让状态行说明不可用
+        _apiChannel = App.Services.GetService<IWslcApiChannel>();
 
         EngineConfigSelector.SelectedItem = FormModeTab;
         BuildFormFields();
@@ -78,8 +96,13 @@ public sealed partial class SettingsPage : Page
         AutoRefreshToggle.IsOn = prefs.AutoRefresh;
         EventStreamToggle.IsOn = prefs.UseEventStream;
         CloseToTrayToggle.IsOn = prefs.CloseToTray;
-        RegistryTextBox.Text = prefs.DefaultRegistry;
+        ApiChannelToggle.IsOn = prefs.UseApiChannel;
         UpdateRepoTextBox.Text = prefs.UpdateRepo;
+
+        ReloadRegistryRows();
+
+        // 探测可能要几百毫秒：不阻塞页面其余部分（状态行自己从"正在探测…"变成结果）
+        _ = RefreshApiChannelStatusAsync();
 
         _isLoaded = true;
     }
@@ -144,18 +167,45 @@ public sealed partial class SettingsPage : Page
         await SavePreferenceAsync(_prefsService.GetPreferences() with { CloseToTray = CloseToTrayToggle.IsOn });
     }
 
-    private async void RegistryTextBox_LostFocus(object sender, RoutedEventArgs e)
+    private async void ApiChannelToggle_Toggled(object sender, RoutedEventArgs e)
     {
         if (!_isLoaded) return;
 
-        var registry = RegistryTextBox.Text.Trim();
-        if (string.IsNullOrEmpty(registry))
+        // 通道侧每轮探测都会重新读这个开关（关闭态不缓存），所以这里只需落盘即可即时生效
+        await SavePreferenceAsync(_prefsService.GetPreferences() with { UseApiChannel = ApiChannelToggle.IsOn });
+
+        await RefreshApiChannelStatusAsync();
+    }
+
+    /// <summary>
+    /// 显示 API 通道的真实可用性。
+    ///
+    /// 为什么必须有这一行：会话被 CLI 进程独占时（0x80040607 SessionReserved）通道只能"只读附着"，
+    /// 而回落到 CLI 是**静默**的 —— 不显示状态，用户会一直以为自己在用 API 加速。
+    /// </summary>
+    private async Task RefreshApiChannelStatusAsync()
+    {
+        if (ApiChannelStatusText is null) return;
+
+        if (_apiChannel is null)
         {
-            registry = "docker.io";
-            RegistryTextBox.Text = registry;
+            ApiChannelStatusText.Text = "状态：通道未注册（始终走 CLI）";
+            return;
         }
 
-        await SavePreferenceAsync(_prefsService.GetPreferences() with { DefaultRegistry = registry });
+        try
+        {
+            var capabilities = await _apiChannel.ProbeAsync();
+
+            ApiChannelStatusText.Text = capabilities.Enabled && capabilities.AttachedSessionName is not null
+                ? $"状态：可用 · 会话「{capabilities.AttachedSessionName}」" +
+                  (capabilities.AttachedReadOnly ? "（只读附着：会话由 CLI 进程独占）" : string.Empty)
+                : $"状态：不可用 → 走 CLI（{capabilities.Reason ?? "原因未知"}）";
+        }
+        catch (Exception ex)
+        {
+            ApiChannelStatusText.Text = $"状态：探测失败 → 走 CLI（{ex.Message}）";
+        }
     }
 
     /// <summary>
@@ -181,6 +231,193 @@ public sealed partial class SettingsPage : Page
             : "prefs.json";
 
         ShowSaved($"面板偏好已保存到 {path}");
+    }
+
+    // ---------- 镜像源 ----------
+
+    /// <summary>
+    /// 重新装载列表。
+    ///
+    /// 业务规则全在 <see cref="RegistrySourceService"/> 里，这里只做三段：
+    /// 取视图 → 按搜索词过滤 → 交给 ListView。**不在这里判断"能不能删""是不是内置"** ——
+    /// 那些判断写在 code-behind 里，就是上一版变成屎山的直接原因。
+    /// </summary>
+    private void ReloadRegistryRows()
+    {
+        var rows = _registrySources.GetAll()
+            .Where(source => source.Matches(RegistrySearchBox.Text))
+            .ToList();
+
+        RegistryListView.ItemsSource = rows;
+        RegistryEmptyText.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void RegistrySearch_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+    {
+        // ProgrammaticChange 是代码赋值触发的（例如页面装载），没必要重排一次
+        if (args.Reason == AutoSuggestionBoxTextChangeReason.ProgrammaticChange) return;
+
+        ReloadRegistryRows();
+    }
+
+    private async void AddRegistry_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new RegistrySourceDialog(source: null) { XamlRoot = XamlRoot };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+        await ApplyRegistryChangeAsync(
+            async () =>
+            {
+                var result = await _registrySources.AddAsync(
+                    dialog.ResultHost,
+                    dialog.ResultNote,
+                    dialog.HasUsername ? dialog.ResultUsername : null,
+                    dialog.ResultPassword);
+
+                return result.Added
+                    ? $"已添加镜像源 {result.Source.Host}。"
+                    : $"「{result.Source.Host}」本来就在列表里，已恢复显示。";
+            },
+            testCredentialFor: dialog.HasUsername ? dialog.ResultHost : null);
+    }
+
+    private async void EditRegistry_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: RegistrySource source }) return;
+
+        var dialog = new RegistrySourceDialog(source) { XamlRoot = XamlRoot };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+        await ApplyRegistryChangeAsync(
+            async () =>
+            {
+                if (!source.IsBuiltIn) await _registrySources.UpdateNoteAsync(source.Host, dialog.ResultNote);
+
+                // 用户名清空 = 这个源不要凭据了（对话框已保证"原本就没有凭据"时不会误清）
+                if (!dialog.HasUsername)
+                {
+                    if (!source.HasCredential) return $"已保存 {source.Host} 的设置。";
+
+                    await _registrySources.ClearCredentialAsync(source.Host);
+                    return $"已保存 {source.Host} 的设置（凭据已清除）。";
+                }
+
+                // 密码留空 = 保持原密码（对话框在"原本没有凭据"时会拦下留空）
+                if (dialog.ResultPassword.Length == 0) return $"已保存 {source.Host} 的设置。";
+
+                await _registrySources.SetCredentialAsync(source.Host, dialog.ResultUsername, dialog.ResultPassword);
+                return $"已保存 {source.Host} 的设置。";
+            },
+            testCredentialFor: dialog.HasUsername && dialog.ResultPassword.Length > 0 ? source.Host : null);
+    }
+
+    private async void RegistryEnabled_Checked(object sender, RoutedEventArgs e)
+        => await ToggleRegistryAsync(sender, enabled: true);
+
+    private async void RegistryEnabled_Unchecked(object sender, RoutedEventArgs e)
+        => await ToggleRegistryAsync(sender, enabled: false);
+
+    private async Task ToggleRegistryAsync(object sender, bool enabled)
+    {
+        if (sender is not FrameworkElement { DataContext: RegistrySource source }) return;
+
+        // ⚠️ OneWay 绑定初始化时也会触发 Checked/Unchecked。
+        // 数据已经是这个值 = 这是回填而不是用户操作，直接返回（否则会自我循环写盘）。
+        if (source.Enabled == enabled) return;
+
+        await ApplyRegistryChangeAsync(async () =>
+        {
+            await _registrySources.SetEnabledAsync(source.Host, enabled);
+
+            return enabled
+                ? $"{source.Host} 已回到「拉取镜像」的下拉里。"
+                : $"{source.Host} 已从下拉里移除（地址仍可手填拉取）。";
+        });
+    }
+
+    private async void RegistryDefault_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: RegistrySource source }) return;
+
+        if (source.IsDefault) return; // 同上：绑定回填不算操作
+
+        await ApplyRegistryChangeAsync(async () =>
+        {
+            await _registrySources.SetDefaultAsync(source.Host);
+            return $"默认镜像源已改为 {source.Host}。";
+        });
+    }
+
+    private async void RemoveRegistry_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: RegistrySource source }) return;
+
+        var confirmed = await DialogHelper.ConfirmDestructiveAsync(
+            XamlRoot,
+            $"删除镜像源 {source.Host}？",
+            "会连同它的凭据一起删掉。内置站点不能删除 —— 取消「显示」就能把它从下拉里去掉。",
+            "删除");
+
+        if (!confirmed) return;
+
+        await ApplyRegistryChangeAsync(async () =>
+        {
+            await _registrySources.RemoveAsync(source.Host);
+            return $"已删除镜像源 {source.Host}。";
+        });
+    }
+
+    /// <summary>
+    /// 执行一次镜像源改动：统一处理"业务拒绝"与"保存后自检"。
+    ///
+    /// 业务层用异常表达拒绝（默认源不能停用、内置不能删…），消息本身就是给用户看的，
+    /// 所以这里原样展示；<paramref name="testCredentialFor"/> 非空时顺手换一次令牌，
+    /// 把"密码对不对"当场问清楚 —— 不用等下一次拉取失败才发现。
+    /// </summary>
+    private async Task ApplyRegistryChangeAsync(Func<Task<string>> action, string? testCredentialFor = null)
+    {
+        try
+        {
+            var message = await action();
+            var severity = InfoBarSeverity.Success;
+
+            if (testCredentialFor is not null)
+            {
+                var probe = await _registryAuth.AcquireAsync(testCredentialFor);
+
+                if (probe.HasToken)
+                {
+                    message += $" 已换到令牌（类型 {probe.TokenKind}），凭据可用。";
+                }
+                else
+                {
+                    message += $" 但凭据暂时换不到令牌：{probe.Error}";
+                    severity = InfoBarSeverity.Warning;
+                }
+            }
+
+            ReloadRegistryRows();
+            ShowRegistryMessage(message, severity);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            // 业务规则的拒绝（默认源不能停用、内置不能删…）：消息本身就是给用户看的，原样展示
+            ReloadRegistryRows();
+            ShowRegistryMessage(ex.Message, InfoBarSeverity.Warning);
+        }
+        catch (Exception ex)
+        {
+            // 兜底：设置页不该因为一次写盘/IO 失败把整个应用带崩
+            ReloadRegistryRows();
+            ShowRegistryMessage($"操作失败：{ex.Message}", InfoBarSeverity.Error);
+        }
+    }
+
+    private void ShowRegistryMessage(string message, InfoBarSeverity severity)
+    {
+        RegistryInfoBar.Severity = severity;
+        RegistryInfoBar.Message = message;
+        RegistryInfoBar.IsOpen = true;
     }
 
     // ---------- 引擎配置 ----------

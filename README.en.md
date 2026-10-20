@@ -10,15 +10,17 @@ neither the .NET runtime nor the Windows App SDK runtime.
 
 | Module | What it does |
 | --- | --- |
-| Containers | List with live CPU / memory, start / stop / restart / force-kill / delete (all behind a confirmation), batch operations, one-click port open, detail flyout (inspect / log snapshot / one-shot exec) |
-| Images | Local table, pull (live progress, cancellable), delete, create a container from an image in one click |
+| Containers | List with live CPU / memory, start / stop / restart / force-kill / delete (all behind a confirmation), batch operations, one-click port open, detail flyout (inspect / **log snapshot + live follow inside the panel** / one-shot exec) |
+| Images | A **pull dialog** (registry / repository / tag as separate fields; the registry list is the built-in accelerators plus Docker Hub **plus any sources you added yourself**, 10 common-image shortcuts, one-click **tag listing** sorted "latest first → versions descending", and automatic download-size measurement for the selected tag), **private-registry authentication** (configure credentials once in Settings; they are applied automatically per registry when listing tags or pulling), **rename / re-tag**, local table, pull progress (cancellable), delete, create a container from an image in one click |
 | Networks / Volumes / Sessions | List, create and remove (built-in networks are protected; consequences are spelled out before deletion) |
 | WSL distros | `wsl -l -v` + registry Lxss: state / version / default / install location / VHDX size, start / terminate / set default / open terminal / unregister |
+| Add a distro | Import a local package (`.tar` / `.tar.gz` / `.tar.xz` / `.vhdx` / `.wsl` — the install method is picked from the extension) or install **online** from the Microsoft catalogue (`wsl --list --online`); includes **pre-flight checks** (duplicate name / target directory / extension) and a **live equivalent-command preview**, with the install streamed and cancellable |
+| Distro details | Compact the disk (reclaim freed blocks), toggle the sparse disk, resize the disk, **move the install location**, **export to a tar archive** (shows bytes written, cancellable), edit `/etc/wsl.conf` (auto-backed up before saving), set the default user, open the install location |
 | Create container | Full form + **live equivalent-command preview** (shares the exact same command-assembly logic as the real run), can prefill ports and the startup command from an image inspect |
-| Settings | Panel preferences + `settings.yaml` in **two modes: form ↔ raw YAML** (line-based replacement to preserve comments, timestamped backup before every save) |
+| Settings | Panel preferences, **registry management** (one list covering built-in and custom sources: a radio marks the default, a "show" checkbox decides whether it appears in the dropdown, editing sets the note and credential, deleting removes custom sources — with search and scrolling), and `settings.yaml` in **two modes: form ↔ raw YAML** (line-based replacement to preserve comments, timestamped backup before every save) |
 | Event stream | A long-lived `wslc events` subscription drives instant refresh (reconnect + resume with de-duplication); polling is the fallback |
 | Desktop integration | Tray resident, close-to-tray, single instance, shortcuts `F5` / `Ctrl+R` / `Ctrl+N` / `Ctrl+1–8`, Mica and instant light / dark switching |
-| About | Environment self-check (engine / kernel / missing components) + update check against GitHub Releases |
+| About | Environment self-check (engine / kernel / missing components) + update check and **in-place update** against GitHub Releases (download → sha256 verify → swap → auto restart, previous build kept as `.old`) |
 
 ## Requirements
 
@@ -92,11 +94,41 @@ The application name is always the repository name, **`wslc-desktop`** — there
 - The official `wslc compose` has not shipped yet, so no orchestration layer is built in
 - Interactive terminals and `logs -f` following are handed off to Windows Terminal (`wt`), falling back to a
   console window when unavailable
-- The update check only compares versions and points you at the download; it never downloads or replaces the
-  running exe (non-MSIX self-update would have to deal with the locked exe, permissions and signing —
-  more risk than value)
-- Pull progress: the engine currently returns only a status keyword (no byte counts), so the bar is
-  indeterminate with status text; it will switch to a percentage automatically once byte counts are exposed
+- **In-place update** is a manual flow — nothing is downloaded or replaced until you confirm, and there is no
+  silent background auto-update. Each update is a full ~96 MB download (GitHub provides no binary deltas)
+- In-place update requires a **writable** program directory: when the app sits in `C:\Program Files\` or
+  another protected location it detects this up front and points you at the download page instead, rather
+  than downloading 96 MB before failing
+- Update packages are unsigned; integrity relies on the **sha256 digest** of the GitHub release asset. Because
+  the app downloads the file itself (no browser Mark-of-the-Web), SmartScreen does not block the swap
+- Pull progress uses two channels, with the official C# API preferred: **the API channel yields real byte
+  counts**, so the bar is determinate with a percentage. When the probe fails (engine missing, components
+  incomplete, no attachable engine session) it **falls back to the CLI automatically** — there the engine
+  returns only a status keyword, so the bar is indeterminate with status text. The "official API channel"
+  toggle in Settings forces the CLI path. This channel only ever **attaches to an existing engine session
+  and never creates one**, so the worst case is a CLI fallback rather than images landing somewhere the CLI
+  cannot see
+- **Private-registry credentials are configured once in Settings → Private registry credentials** and then
+  applied automatically per registry: passwords are encrypted with **Windows DPAPI (current user)** before
+  landing in the local `prefs.json` — plaintext is never written to disk or to logs, and the blob is
+  undecryptable on another machine or under another Windows account. A **Test** button exchanges a token on
+  the spot so you learn about a wrong password immediately instead of after a failed pull. Public images need
+  no configuration at all.
+- **Settings → Registries is one list, and built-in sources are rows just like yours** — same fields
+  (note, credential status, enabled). There is exactly one way to operate it: the **radio** on the left picks
+  the default, the **"show" checkbox** decides whether it appears in the dropdown, **Edit** changes the note
+  and credential, and **Delete** appears only for custom sources. A search box at the top filters by host,
+  note or username. Private passwords are encrypted with Windows DPAPI before being stored; saving a
+  credential exchanges a token right away, so a wrong password is reported immediately.
+- Tag lists are fetched straight from the registry (neither the official API nor `wslc` exposes them).
+  The default registry is **`docker.1panel.live`** (measured: both tags and manifests are anonymous, and
+  it works **without a proxy**). **Docker Hub (`registry-1.docker.io`) is selectable too** — public images
+  only need an anonymous token to list tags, but it requires outbound connectivity, so it commonly times out
+  on a direct connection in China; a proxy works. Other sites (`docker.1ms.run` / `docker.m.daocloud.io`)
+  need a token from their own domain — you can still pull by typing a tag manually, and the UI says so up
+  front instead of letting you wait for a request that is bound to fail. **The registry you type is never
+  renamed**: `docker.io` stays visible and is used as the pull reference; only the tag query talks to the
+  real API endpoint `registry-1.docker.io` under the hood
 
 ## License
 

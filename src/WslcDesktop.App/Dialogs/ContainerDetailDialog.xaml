@@ -113,7 +113,12 @@
             </Border>
         </Grid>
 
-        <!-- 日志 -->
+        <!--
+            日志（M15）：快照 + **内嵌跟随**。
+            以前这里是"快照 + 去外置终端跟随"，因为 logs 的 follow 选项永不返回；
+            现在用流式管道直接读（IProcessRunner.RunStreamingAsync），
+            所以跟随就在这个面板里，带状态、可停止、自动贴底。
+        -->
         <Grid
             x:Name="LogPane"
             Grid.Row="2"
@@ -123,20 +128,57 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8">
-                <ComboBox x:Name="LogTailCombo" Width="130" SelectedIndex="2" SelectionChanged="LogTail_Changed">
+
+            <Grid Grid.Row="0" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <ComboBox x:Name="LogTailCombo" Grid.Column="0" Width="130" SelectedIndex="2" SelectionChanged="LogTail_Changed"
+                          ToolTipService.ToolTip="快照取多少行。跟随不受此项限制：始终跟到最新，面板保留最近 1000 行">
                     <ComboBoxItem Content="最近 50 行" Tag="50" />
                     <ComboBoxItem Content="最近 100 行" Tag="100" />
                     <ComboBoxItem Content="最近 200 行" Tag="200" />
                     <ComboBoxItem Content="最近 500 行" Tag="500" />
                 </ComboBox>
-                <Button Click="ReloadLogs_Click" Content="重新读取" />
+
+                <!-- 提示文字（含真正会执行的命令）由代码设置：参数位置写错时能一眼看出来 -->
+                <ToggleButton
+                    x:Name="FollowToggle"
+                    Grid.Column="1"
+                    MinWidth="0"
+                    Click="FollowToggle_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon FontSize="12" Glyph="&#xE768;" />
+                        <TextBlock Text="跟随" />
+                    </StackPanel>
+                </ToggleButton>
+
+                <Button
+                    Grid.Column="2"
+                    Click="ReloadLogs_Click"
+                    Content="重新读取"
+                    ToolTipService.ToolTip="停止跟随并取一次当前快照" />
+
+                <Button
+                    Grid.Column="3"
+                    Click="ClearLogs_Click"
+                    Content="清空" />
+
                 <TextBlock
+                    x:Name="LogStatusText"
+                    Grid.Column="4"
                     VerticalAlignment="Center"
                     FontSize="12"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="需要实时跟随（logs -f）请用下方“跟随日志”。" />
-            </StackPanel>
+                    Text="正在读取…"
+                    TextTrimming="CharacterEllipsis" />
+            </Grid>
+
             <Border
                 Grid.Row="1"
                 MaxHeight="370"
@@ -154,6 +196,7 @@
                         FontFamily="Consolas"
                         FontSize="12"
                         IsTextSelectionEnabled="True"
+                        Text="正在读取…"
                         TextWrapping="NoWrap" />
                 </ScrollViewer>
             </Border>
@@ -174,6 +217,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBox
                         x:Name="CommandBox"
@@ -186,11 +230,19 @@
                         Click="RunCommand_Click"
                         Content="执行"
                         Style="{StaticResource AccentButtonStyle}" />
+                    <Button
+                        x:Name="StopCommandButton"
+                        Grid.Column="2"
+                        Click="StopCommand_Click"
+                        Content="停止"
+                        IsEnabled="False"
+                        ToolTipService.ToolTip="向容器内进程发送 SIGTERM；3 秒没退出自动 SIGKILL" />
                 </Grid>
                 <TextBlock
+                    x:Name="CommandStatusText"
                     FontSize="12"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="一次性命令（非交互）。需要 vi / top 这类交互程序时，请用「在终端中打开」。"
+                    Text="可以执行长命令：输出实时刷新，运行中可点「停止」（停止作用于容器内进程本身）。"
                     TextWrapping="Wrap" />
             </StackPanel>
             <Border
@@ -202,6 +254,7 @@
                 BorderThickness="1"
                 CornerRadius="6">
                 <ScrollViewer
+                    x:Name="CommandOutputScroller"
                     HorizontalScrollBarVisibility="Auto"
                     VerticalScrollBarVisibility="Auto">
                     <TextBlock

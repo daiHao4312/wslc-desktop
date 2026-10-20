@@ -23,6 +23,9 @@ public sealed partial class ContainersPage : Page, IRefreshable
 
     private bool _isBusy;
 
+    /// <summary>是否已经成功取到过一次数据。首次进入页面要靠它决定"要不要给个加载提示"。</summary>
+    private bool _hasLoaded;
+
     public ContainersPage()
     {
         InitializeComponent();
@@ -60,7 +63,10 @@ public sealed partial class ContainersPage : Page, IRefreshable
             return;
         }
 
-        if (userInitiated) LoadingBar.Visibility = Visibility.Visible;
+        // 首次进入页面时列表是空的、又没有进度条 → 看起来像"点了没反应"。
+        // 后台轮询仍然不亮条（"刷新不打扰"），只有"还没有任何数据"这一种情况才显示。
+        var showLoading = userInitiated || !_hasLoaded;
+        if (showLoading) LoadingBar.Visibility = Visibility.Visible;
 
         // 列表整体换 ItemsSource 会把选中项清空；后台刷新若这么做，用户勾到一半就被打断
         var selection = CaptureSelection();
@@ -70,6 +76,7 @@ public sealed partial class ContainersPage : Page, IRefreshable
             var containers = await _client.GetContainersAsync(all: true, _pageCts.Token);
             SyncRows(containers);
             RestoreSelection(selection);
+            _hasLoaded = true;
 
             var isEmpty = containers.Count == 0;
             EmptyState.Visibility = isEmpty ? Visibility.Visible : Visibility.Collapsed;
@@ -87,7 +94,7 @@ public sealed partial class ContainersPage : Page, IRefreshable
         }
         finally
         {
-            if (userInitiated) LoadingBar.Visibility = Visibility.Collapsed;
+            if (showLoading) LoadingBar.Visibility = Visibility.Collapsed;
             UpdateBatchBar();
         }
     }
@@ -423,7 +430,7 @@ public sealed partial class ContainersPage : Page, IRefreshable
             TerminalLauncher.OpenContainerShell(container.Id);
         }
 
-        if (dialog.FollowLogsRequested)
+        if (dialog.OpenLogsInTerminalRequested)
         {
             TerminalLauncher.FollowContainerLogs(container.Id);
         }

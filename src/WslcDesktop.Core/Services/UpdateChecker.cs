@@ -100,6 +100,10 @@ public sealed class UpdateChecker : IUpdateChecker, IDisposable
                     CurrentVersion = currentVersion,
                     LatestVersion = latest,
                     DownloadUrl = release.DownloadUrl,
+                    AssetUrl = release.AssetUrl,
+                    AssetName = release.AssetName,
+                    AssetSize = release.AssetSize,
+                    AssetSha256 = release.AssetSha256,
                     Notes = release.NotesSummary,
                     PublishedAt = release.PublishedAt,
                     Message = $"发现新版本 {latest}（当前 {currentVersion}）。"

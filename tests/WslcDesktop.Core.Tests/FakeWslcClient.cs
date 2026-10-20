@@ -18,6 +18,12 @@ internal sealed class FakeWslcClient : IWslcClient
     /// <summary>按调用顺序记录收到的 <c>--since</c> 实参（null 表示没传）。</summary>
     public List<DateTimeOffset?> ReceivedSince { get; } = new();
 
+    /// <summary>拉取行为（M14 的通道回落测试用）；未设置时返回空结果。</summary>
+    public Func<string, Action<PullProgress>?, CancellationToken, Task<PullResult>>? PullBehavior { get; set; }
+
+    /// <summary>按调用顺序记录被要求拉取的镜像引用。</summary>
+    public List<string> PullRequests { get; } = new();
+
     private readonly SemaphoreSlim _gate = new(1, 1);
     private int _concurrentCalls;
 
@@ -117,14 +123,75 @@ internal sealed class FakeWslcClient : IWslcClient
     public Task<string> GetContainerLogsAsync(string idOrName, int tail = 100, CancellationToken cancellationToken = default)
         => Task.FromResult(string.Empty);
 
+    /// <summary>测试注入：模拟"跟随日志"的两路行流（out / err）与结束方式。</summary>
+    public Func<string, Action<string>, Action<string>?, CancellationToken, Task<ProcessExecutionResult>>? LogStreamBehavior { get; set; }
+
+    public Task<ProcessExecutionResult> StreamContainerLogsAsync(
+        string idOrName,
+        Action<string> onOutputLine,
+        Action<string>? onErrorLine = null,
+        CancellationToken cancellationToken = default)
+        => LogStreamBehavior?.Invoke(idOrName, onOutputLine, onErrorLine, cancellationToken)
+           ?? Task.FromResult(new ProcessExecutionResult(0, string.Empty, string.Empty, IsSuccess: true));
+
     public Task<ExecResult> ExecAsync(string idOrName, string command, CancellationToken cancellationToken = default)
         => Task.FromResult(new ExecResult());
 
-    public Task<PullResult> PullImageAsync(string imageUri, Action<PullProgress>? onProgress = null, CancellationToken cancellationToken = default)
-        => Task.FromResult(new PullResult());
+    /// <summary>测试注入：模拟"可管理的容器内进程"（默认判为不可用，走一次性执行路径）。</summary>
+    public Func<string, string, Action<string>, CancellationToken, Task<ApiProcessStartResult>>? StartProcessBehavior { get; set; }
+
+    public Task<ApiProcessStartResult> TryStartContainerProcessAsync(
+        string idOrName,
+        string command,
+        Action<string> onOutputLine,
+        CancellationToken cancellationToken = default)
+        => StartProcessBehavior?.Invoke(idOrName, command, onOutputLine, cancellationToken)
+           ?? Task.FromResult(ApiProcessStartResult.Unavailable("测试替身：没有 API 通道"));
+
+    /// <summary>测试注入：模拟"CLI 模式的可停止命令"。</summary>
+    public Func<string, string, Action<string>, CancellationToken, Task<ProcessExecutionResult>>? TrackedCommandBehavior { get; set; }
+
+    public int StopTrackedCalls { get; private set; }
+
+    public Task<ProcessExecutionResult> StreamTrackedCommandAsync(
+        string idOrName,
+        string command,
+        Action<string> onOutputLine,
+        CancellationToken cancellationToken = default)
+        => TrackedCommandBehavior?.Invoke(idOrName, command, onOutputLine, cancellationToken)
+           ?? Task.FromResult(new ProcessExecutionResult(0, string.Empty, string.Empty, IsSuccess: true));
+
+    public Task<ExecResult> StopTrackedCommandAsync(string idOrName, CancellationToken cancellationToken = default)
+    {
+        StopTrackedCalls++;
+        return Task.FromResult(new ExecResult { Success = true });
+    }
+
+    public Task<PullResult> PullImageAsync(
+        string imageUri,
+        string? registryAuth = null,
+        Action<PullProgress>? onProgress = null,
+        CancellationToken cancellationToken = default)
+    {
+        PullRequests.Add(imageUri);
+        ReceivedRegistryAuth.Add(registryAuth);
+        return PullBehavior?.Invoke(imageUri, onProgress, cancellationToken) ?? Task.FromResult(new PullResult());
+    }
+
+    /// <summary>按调用顺序记录收到的私有仓库令牌（null 表示没带）。</summary>
+    public List<string?> ReceivedRegistryAuth { get; } = new();
 
     public Task<bool> DeleteImageAsync(string idOrName, bool force = false, CancellationToken cancellationToken = default)
         => Task.FromResult(true);
+
+    public Task<bool> TagImageAsync(string source, string target, CancellationToken cancellationToken = default)
+    {
+        TagRequests.Add((source, target));
+        return Task.FromResult(true);
+    }
+
+    /// <summary>按调用顺序记录打过的标签。</summary>
+    public List<(string Source, string Target)> TagRequests { get; } = new();
 
     public Task<ImageInspectInfo> InspectImageAsync(string reference, CancellationToken cancellationToken = default)
         => Task.FromResult(new ImageInspectInfo());

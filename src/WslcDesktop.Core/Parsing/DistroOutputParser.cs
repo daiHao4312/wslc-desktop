@@ -25,6 +25,14 @@ public static class DistroOutputParser
         RegexOptions.Compiled);
 
     /// <summary>
+    /// <c>wsl --list --online</c> 的数据行：ASCII 名 + 空白分隔 + 友好名。
+    /// 名里不含空格（引擎侧的标识符），友好名可以含空格。
+    /// </summary>
+    private static readonly Regex OnlineLineRegex = new(
+        @"^(?<name>[A-Za-z0-9][A-Za-z0-9._\-]*)[ \t]+(?<friendly>\S.*)$",
+        RegexOptions.Compiled);
+
+    /// <summary>
     /// 解析 <c>wsl --list --verbose</c>。
     /// 调用方注入 WSL_UTF8=1（见 CliProcessRunner.ResolveEncoding），输出为 UTF-8。
     /// 表头跟随英文 NAME 关键字；非英语 Windows 上若出现本地化表头（"名称"），
@@ -175,6 +183,41 @@ public static class DistroOutputParser
                 Version = version,
                 VhdSizeBytes = TryGetFileSize(basePath, vhdFileName)
             });
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// 解析 <c>wsl --list --online</c>。实测形态（中文 Windows）：
+    /// <code>
+    /// 以下是可安装的有效分发的列表。
+    /// 使用"wsl.exe --install &lt;Distro&gt;"进行安装。
+    ///
+    /// NAME                                   FRIENDLY NAME
+    /// Ubuntu                                 Ubuntu
+    /// Ubuntu-24.04                           Ubuntu 24.04 LTS
+    /// </code>
+    /// 因此**不靠表头文字**（本地化会变）：只认"以 ASCII 名字开头 + 空白 + 友好名"的行，
+    /// 中文前言、空行、"使用…进行安装"这类提示行天然被过滤掉。
+    /// </summary>
+    public static List<OnlineDistroModel> ParseOnlineList(string? output)
+    {
+        var result = new List<OnlineDistroModel>();
+        if (string.IsNullOrWhiteSpace(output)) return result;
+
+        foreach (var rawLine in output.Split('\n'))
+        {
+            var line = rawLine.TrimEnd('\r');
+            var match = OnlineLineRegex.Match(line);
+            if (!match.Success) continue;
+
+            var name = match.Groups["name"].Value;
+            var friendly = match.Groups["friendly"].Value.Trim();
+
+            if (name.Equals("NAME", StringComparison.OrdinalIgnoreCase)) continue;
+
+            result.Add(new OnlineDistroModel { Name = name, FriendlyName = friendly });
         }
 
         return result;

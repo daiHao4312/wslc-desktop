@@ -5,6 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+
+    <!-- 与 Core / App 保持一致：本测试项目直接引用 wslcsdkcs 类型（ApiSurfaceExportTests），
+         投影包版本不一致会报 CS1705。详见 Core.csproj 里的说明。 -->
+    <WindowsSdkPackageVersion>10.0.26100.80</WindowsSdkPackageVersion>
   </PropertyGroup>
 
   <ItemGroup>

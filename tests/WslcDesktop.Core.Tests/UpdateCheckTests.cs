@@ -24,7 +24,12 @@ public class UpdateCheckTests
       "published_at": "2026-10-01T08:30:00Z",
       "assets": [
         { "name": "checksums.txt", "browser_download_url": "https://example.com/checksums.txt" },
-        { "name": "WslcDesktop.App.exe", "browser_download_url": "https://example.com/WslcDesktop.App.exe" }
+        {
+          "name": "WslcDesktop.App.exe",
+          "browser_download_url": "https://example.com/WslcDesktop.App.exe",
+          "size": 95724931,
+          "digest": "sha256:8EEFA14F0AB353CCBF6A88B638B4B6124C3C70FBDF440622EC83F18249FEDB49"
+        }
       ]
     }
     """;
@@ -74,6 +79,28 @@ public class UpdateCheckTests
         Assert.Contains("批量条点不动", release.NotesSummary);
         // 摘要必须是单行紧凑文本
         Assert.DoesNotContain('\n', release.NotesSummary);
+
+        // 在线更新要用的大小与摘要（GitHub 的 digest 会带算法前缀，要归一化成小写十六进制）
+        Assert.Equal(95724931L, release.AssetSize);
+        Assert.Equal("8eefa14f0ab353ccbf6a88b638b4b6124c3c70fbdf440622ec83f18249fedb49", release.AssetSha256);
+    }
+
+    [Fact]
+    public void TestParseRelease_ToleratesAssetsWithoutSizeOrDigest()
+    {
+        const string json = """
+        { "tag_name": "v1.1.0", "html_url": "https://example.com",
+          "assets": [ { "name": "wslc-desktop.exe", "browser_download_url": "https://example.com/wslc-desktop.exe",
+                        "size": -1, "digest": "sha512:zzz" } ] }
+        """;
+
+        var release = GitHubReleaseParser.Parse(json);
+
+        Assert.NotNull(release);
+        // 负数大小与不认识的算法都当"没有"，不能拿错的哈希去校验好包
+        Assert.Null(release!.AssetSize);
+        Assert.Null(release.AssetSha256);
+        Assert.NotNull(release.AssetUrl);
     }
 
     [Fact]
@@ -89,6 +116,24 @@ public class UpdateCheckTests
         Assert.NotNull(release);
         Assert.Null(release!.AssetUrl);
         Assert.Equal("https://github.com/example/wslc-panel/releases/tag/1.0.1", release.DownloadUrl);
+    }
+
+    [Fact]
+    public async Task TestCheck_WithoutExeAssetCannotAutoUpdate()
+    {
+        const string json = """
+        { "tag_name": "v1.2.0", "html_url": "https://github.com/example/wslc-panel/releases/tag/v1.2.0",
+          "assets": [ { "name": "source.zip", "browser_download_url": "https://example.com/source.zip" } ] }
+        """;
+
+        using var checker = new UpdateChecker(new HttpClient(new StubHandler(HttpStatusCode.OK, json)));
+        var result = await checker.CheckAsync("example/wslc-panel", "1.0.0");
+
+        Assert.True(result.HasUpdate);
+        // 能点开下载页，但没有可替换的 exe 资产 → 不能在线更新
+        Assert.True(result.CanOpenDownload);
+        Assert.False(result.CanAutoUpdate);
+        Assert.Null(result.ToPackage());
     }
 
     [Fact]
@@ -170,6 +215,14 @@ public class UpdateCheckTests
         Assert.Equal("1.2.0", result.LatestVersion);
         Assert.True(result.CanOpenDownload);
         Assert.Equal("https://example.com/WslcDesktop.App.exe", result.DownloadUrl);
+
+        // 可以从检查结果直接走到"下载并替换"
+        Assert.True(result.CanAutoUpdate);
+        var package = result.ToPackage();
+        Assert.NotNull(package);
+        Assert.Equal("WslcDesktop.App.exe", package!.FileName);
+        Assert.Equal(95724931L, package.Size);
+        Assert.True(package.HasChecksum);
 
         // 打的是 latest release 接口，且带了 GitHub 必需的 UA
         Assert.NotNull(handler.LastRequest);

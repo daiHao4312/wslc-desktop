@@ -1,0 +1,347 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="WslcDesktop.Pages.AddDistroPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Padding="24" RowSpacing="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 标题与提交 -->
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Button
+                Grid.Column="0"
+                Margin="0,0,12,0"
+                VerticalAlignment="Top"
+                Click="Back_Click"
+                ToolTipService.ToolTip="返回发行版列表">
+                <FontIcon FontSize="14" Glyph="&#xE72B;" />
+            </Button>
+
+            <StackPanel Grid.Column="1" Spacing="4">
+                <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="添加发行版" />
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="从本地安装包导入，或从微软发行版清单在线安装；右侧实时显示等效的 wsl 命令" />
+            </StackPanel>
+
+            <Button
+                x:Name="InstallButton"
+                Grid.Column="2"
+                VerticalAlignment="Top"
+                Click="Install_Click"
+                Style="{StaticResource AccentButtonStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon FontSize="14" Glyph="&#xE896;" />
+                    <TextBlock Text="开始安装" />
+                </StackPanel>
+            </Button>
+        </Grid>
+
+        <InfoBar
+            x:Name="MessageInfoBar"
+            Grid.Row="1"
+            IsClosable="True"
+            IsOpen="False"
+            Severity="Warning" />
+
+        <Grid Grid.Row="2" ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="2*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 表单 -->
+            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="16">
+                    <Border
+                        Padding="16"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                        <StackPanel Spacing="12">
+                            <TextBlock FontWeight="Medium" Text="安装来源" />
+                            <SelectorBar x:Name="SourceSelector" SelectionChanged="SourceSelector_SelectionChanged">
+                                <SelectorBarItem x:Name="LocalFileItem" Text="本地文件" />
+                                <SelectorBarItem x:Name="OnlineItem" Text="在线发行版" />
+                            </SelectorBar>
+                            <TextBlock
+                                x:Name="SourceHintText"
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 本地文件 -->
+                    <Border
+                        x:Name="LocalFileCard"
+                        Padding="16"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                        <StackPanel Spacing="12">
+                            <TextBlock FontWeight="Medium" Text="安装包与位置" />
+
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox
+                                    x:Name="FilePathBox"
+                                    Header="安装包路径"
+                                    PlaceholderText="*.tar / *.tar.gz / *.tgz / *.tar.xz / *.vhdx / *.wsl"
+                                    TextChanged="Field_Changed" />
+                                <Button
+                                    Grid.Column="1"
+                                    VerticalAlignment="Bottom"
+                                    Click="BrowseFile_Click"
+                                    ToolTipService.ToolTip="从资源管理器选择安装包">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon FontSize="12" Glyph="&#xE8B7;" />
+                                        <TextBlock Text="浏览" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+
+                            <TextBlock
+                                x:Name="DetectedModeText"
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                TextWrapping="Wrap" />
+
+                            <TextBox
+                                x:Name="NameBox"
+                                Header="发行版名"
+                                PlaceholderText="例如 Ubuntu-24.04（.wsl 包可留空，用包内默认名）"
+                                TextChanged="Field_Changed" />
+
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox
+                                    x:Name="DirectoryBox"
+                                    Header="安装目录（tar / vhdx 必须是空的绝对路径；.wsl 可留空）"
+                                    PlaceholderText="例如 D:\WSL\Ubuntu"
+                                    TextChanged="Field_Changed" />
+                                <Button
+                                    Grid.Column="1"
+                                    VerticalAlignment="Bottom"
+                                    Click="BrowseDirectory_Click"
+                                    ToolTipService.ToolTip="从资源管理器选择安装目录">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon FontSize="12" Glyph="&#xE8B7;" />
+                                        <TextBlock Text="选择目录" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+
+                            <StackPanel x:Name="VersionPanel" Spacing="6">
+                                <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="WSL 版本" />
+                                <StackPanel Orientation="Horizontal" Spacing="16">
+                                    <RadioButton
+                                        x:Name="Version2Radio"
+                                        Content="WSL 2（推荐）"
+                                        GroupName="WslVersion"
+                                        IsChecked="True"
+                                        Checked="Field_Checked" />
+                                    <RadioButton
+                                        x:Name="Version1Radio"
+                                        Content="WSL 1"
+                                        GroupName="WslVersion"
+                                        Checked="Field_Checked" />
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 在线发行版 -->
+                    <Border
+                        x:Name="OnlineCard"
+                        Padding="16"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Visibility="Collapsed">
+                        <StackPanel Spacing="12">
+                            <TextBlock FontWeight="Medium" Text="微软发行版清单" />
+
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox
+                                    x:Name="OnlineCombo"
+                                    HorizontalAlignment="Stretch"
+                                    Header="发行版"
+                                    PlaceholderText="先点右侧「载入清单」"
+                                    SelectionChanged="Field_SelectionChanged" />
+                                <Button
+                                    Grid.Column="1"
+                                    VerticalAlignment="Bottom"
+                                    Click="LoadOnline_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon FontSize="12" Glyph="&#xE72C;" />
+                                        <TextBlock Text="载入清单" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+
+                            <TextBox
+                                x:Name="OnlineDirectoryBox"
+                                Header="安装目录（可留空）"
+                                PlaceholderText="留空则安装到引擎默认位置"
+                                TextChanged="Field_Changed" />
+
+                            <TextBlock
+                                x:Name="OnlineHintText"
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="清单来自 wsl --list --online，需要联网；首次启动发行版时可能要求创建用户名与密码。"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- 命令与步骤预览 -->
+            <Border
+                Grid.Column="1"
+                Padding="14,12"
+                VerticalAlignment="Top"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+                <StackPanel Spacing="8">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            Grid.Column="0"
+                            VerticalAlignment="Center"
+                            FontWeight="Medium"
+                            Text="等效命令预览" />
+                        <Button
+                            Grid.Column="1"
+                            Margin="8,0,0,0"
+                            Padding="8,2"
+                            HorizontalAlignment="Right"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Click="CopyCommand_Click"
+                            ToolTipService.ToolTip="复制该命令">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon FontSize="12" Glyph="&#xE8C8;" />
+                                <TextBlock FontSize="12" Text="复制" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+
+                    <TextBlock
+                        x:Name="ModeText"
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap" />
+
+                    <!-- 水平滚动条必须 Disabled，否则 TextWrapping 失效，长命令会被裁掉 -->
+                    <ScrollViewer
+                        MaxHeight="150"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+                        <TextBlock
+                            x:Name="CommandPreviewText"
+                            FontFamily="Consolas"
+                            FontSize="12"
+                            IsTextSelectionEnabled="True"
+                            TextWrapping="Wrap"
+                            Text="（填完左侧表单后显示）" />
+                    </ScrollViewer>
+
+                    <TextBlock FontSize="12" FontWeight="Medium" Text="执行步骤" />
+                    <TextBlock
+                        x:Name="StepsText"
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap" />
+
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="与面板实际执行的是同一份拼装逻辑，可直接复制到终端排错。"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- 安装过程就地展示，不弹窗打扰 -->
+        <Border
+            x:Name="ProgressCard"
+            Grid.Row="3"
+            Padding="14,12"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Visibility="Collapsed">
+            <StackPanel Spacing="8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        x:Name="ProgressTitleText"
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        FontWeight="Medium"
+                        Text="正在安装…" />
+                    <Button
+                        x:Name="CancelInstallButton"
+                        Grid.Column="1"
+                        Padding="10,4"
+                        Click="CancelInstall_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon FontSize="12" Glyph="&#xE711;" />
+                            <TextBlock Text="取消" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+
+                <ProgressBar x:Name="InstallProgressBar" IsIndeterminate="True" />
+
+                <TextBox
+                    x:Name="LogBox"
+                    Height="140"
+                    AcceptsReturn="True"
+                    FontFamily="Consolas"
+                    FontSize="12"
+                    IsReadOnly="True"
+                    TextWrapping="NoWrap"
+                    ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Page>

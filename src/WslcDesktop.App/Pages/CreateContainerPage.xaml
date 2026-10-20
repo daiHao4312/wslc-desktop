@@ -96,7 +96,8 @@
                             <TextBox x:Name="NameBox" Header="容器名称（可选）" PlaceholderText="例如 my-nginx" TextChanged="Field_Changed" />
 
                             <StackPanel Orientation="Horizontal" Spacing="12">
-                                <TextBox x:Name="MemoryBox" Width="160" Header="内存限制" PlaceholderText="512M" TextChanged="Field_Changed" />
+                                <TextBox x:Name="MemoryBox" Width="160" Header="内存限制" PlaceholderText="512M" TextChanged="Field_Changed"
+                                         ToolTipService.ToolTip="单位必须大写：512M、1G、2G（小写 512m 会被引擎拒绝）" />
                                 <TextBox x:Name="CpusBox" Width="160" Header="CPU 数" PlaceholderText="0.5" TextChanged="Field_Changed" />
                             </StackPanel>
                         </StackPanel>
@@ -199,7 +200,8 @@
                                 Header="网络"
                                 IsEditable="True"
                                 PlaceholderText="bridge"
-                                TextSubmitted="Field_ComboChanged" />
+                                TextSubmitted="Field_ComboChanged"
+                                ToolTipService.ToolTip="bridge / none 可用；host 模式引擎不支持。自定义网络请先在「网络」页创建" />
                         </StackPanel>
                     </Border>
 
@@ -217,7 +219,21 @@
                             <StackPanel Orientation="Horizontal" Spacing="12">
                                 <TextBox x:Name="WorkdirBox" Width="200" Header="工作目录" PlaceholderText="/app" TextChanged="Field_Changed" />
                                 <TextBox x:Name="HostnameBox" Width="200" Header="主机名" PlaceholderText="myhost" TextChanged="Field_Changed" />
+                                <TextBox x:Name="DomainNameBox" Width="200" Header="域名" PlaceholderText="example.local" TextChanged="Field_Changed" />
                             </StackPanel>
+
+                            <!--
+                                GPU 直通：只提供"全部 GPU"这一档。
+                                device=N 那种写法要求把引号带进参数值，wslc 是否同样解析没有实测依据，不赌。
+                                宿主机没有 GPU 时引擎会在启动阶段报错，界面会把引擎原文带出来。
+                            -->
+                            <ToggleSwitch
+                                x:Name="GpuToggle"
+                                MinWidth="0"
+                                Header="GPU 直通（--gpus all）"
+                                OffContent=""
+                                OnContent=""
+                                Toggled="Field_Toggled" />
 
                             <ComboBox x:Name="PullPolicyCombo" Width="220" Header="镜像拉取策略" SelectionChanged="Field_ComboChanged">
                                 <ComboBoxItem Content="本地缺失时拉取（默认）" Tag="missing" />

@@ -166,8 +166,54 @@ public class CliWslcClient : IWslcClient
 
     public async Task<string> GetContainerLogsAsync(string idOrName, int tail = 100, CancellationToken cancellationToken = default)
     {
-        var result = await _runner.RunAsync(_wslcExecutable, $"logs -n {tail} {WslcCommandBuilder.Quote(idOrName)}", cancellationToken: cancellationToken);
-        return string.IsNullOrEmpty(result.StandardOutput) ? result.StandardError : result.StandardOutput;
+        // 参数拼装与"跟随"共用 BuildLogsArguments：两处各拼一份，迟早出现行数不一致的怪现象
+        var result = await _runner.RunAsync(
+            _wslcExecutable,
+            WslcCommandBuilder.BuildLogsArguments(idOrName, tail, follow: false),
+            cancellationToken: cancellationToken);
+
+        return MergeStreams(result.StandardOutput, result.StandardError);
+    }
+
+    /// <summary>
+    /// 把容器 stdout 与 stderr 合成一份。
+    ///
+    /// ⚠️ **两路都要**：<c>wslc logs</c> 用**自己的 stdout/stderr 分别承载容器的 stdout/stderr**。
+    /// 这里曾经写成"stdout 非空就返回 stdout"，后果是 MySQL 这类镜像
+    /// 只显示 entrypoint 脚本那十几行（写 stdout），而 mysqld 的运行日志（写 stderr）全被丢掉 ——
+    /// 界面上看起来"日志只有创建时的那点"，跟着随走一遍才发现两路都得接。
+    ///
+    /// 一次性的快照拿不到两路的真实交错顺序（各自一个管道，读完才知道），
+    /// 所以按"先 stdout 后 stderr"拼；要看真实时序请用跟随。
+    /// </summary>
+    private static string MergeStreams(string? standardOutput, string? standardError)
+    {
+        var output = standardOutput ?? string.Empty;
+        var error = standardError ?? string.Empty;
+
+        if (error.Trim().Length == 0) return output;
+        if (output.Length == 0) return error;
+
+        return output.EndsWith('\n') ? output + error : output + Environment.NewLine + error;
+    }
+
+    public Task<ProcessExecutionResult> StreamContainerLogsAsync(
+        string idOrName,
+        Action<string> onOutputLine,
+        Action<string>? onErrorLine = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(onOutputLine);
+
+        // ⚠️ stderr 也要接：wslc 用它承载**容器的 stderr**。
+        // 不接的话，把运行日志写到 stderr 的镜像（MySQL / nginx）在面板里只剩 entrypoint 那几行。
+        return _runner.RunStreamingAsync(
+            _wslcExecutable,
+            WslcCommandBuilder.BuildLogsArguments(idOrName, WslcCommandBuilder.DefaultLogTail, follow: true),
+            onOutputLine,
+            onErrorLine,
+            customEnvironment: null,
+            cancellationToken: cancellationToken);
     }
 
     public async Task<ExecResult> ExecAsync(string idOrName, string command, CancellationToken cancellationToken = default)
@@ -179,7 +225,7 @@ public class CliWslcClient : IWslcClient
 
         var result = await _runner.RunAsync(
             _wslcExecutable,
-            $"exec {WslcCommandBuilder.Quote(idOrName)} {command}",
+            WslcCommandBuilder.BuildExecArguments(idOrName, command),
             cancellationToken: cancellationToken);
 
         return new ExecResult
@@ -190,13 +236,63 @@ public class CliWslcClient : IWslcClient
         };
     }
 
+    public Task<ProcessExecutionResult> StreamTrackedCommandAsync(
+        string idOrName,
+        string command,
+        Action<string> onOutputLine,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(onOutputLine);
+
+        // stderr 也是这条命令的输出（脚本里的报错同样要给用户看）
+        return _runner.RunStreamingAsync(
+            _wslcExecutable,
+            ContainerExecWrapper.BuildTrackedExecArguments(idOrName, command),
+            onOutputLine,
+            onOutputLine,
+            customEnvironment: null,
+            cancellationToken: cancellationToken);
+    }
+
+    public async Task<ExecResult> StopTrackedCommandAsync(string idOrName, CancellationToken cancellationToken = default)
+    {
+        var result = await _runner.RunAsync(
+            _wslcExecutable,
+            ContainerExecWrapper.BuildStopArguments(idOrName),
+            cancellationToken: cancellationToken);
+
+        return new ExecResult
+        {
+            Success = result.IsSuccess,
+            Output = result.StandardOutput,
+            Error = result.StandardError
+        };
+    }
+
+    /// <summary>
+    /// CLI 通道没有"可管理进程"这个能力：<c>wslc exec</c> 是一次性执行，
+    /// 杀掉客户端进程也不保证容器里的进程跟着结束（只有 API 的 Signal 能保证）。
+    /// 所以这里如实报不可用，让界面回落并说明差别 —— 不假装两者一样。
+    /// </summary>
+    public Task<ApiProcessStartResult> TryStartContainerProcessAsync(
+        string idOrName,
+        string command,
+        Action<string> onOutputLine,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(ApiProcessStartResult.Unavailable("CLI 通道只能一次性执行，不能发信号"));
+
     // ---------- 镜像 ----------
 
     public async Task<PullResult> PullImageAsync(
         string imageUri,
+        string? registryAuth = null,
         Action<PullProgress>? onProgress = null,
         CancellationToken cancellationToken = default)
     {
+        // ⚠️ registryAuth 在 CLI 通道上**用不了**：`wslc pull` 没有凭据参数。
+        // 这里不报错也不静默改写命令，只是忽略它 —— 引擎自己的凭据缓存仍可能让这条命令成功，
+        // 提前拦下反而会挡掉本来能用的路径。私有仓库真正需要令牌时要靠官方 API 通道。
+        _ = registryAuth;
         if (string.IsNullOrWhiteSpace(imageUri))
         {
             return new PullResult { Success = false, ImageReference = imageUri ?? string.Empty, Message = "镜像引用不能为空" };
@@ -230,6 +326,18 @@ public class CliWslcClient : IWslcClient
     {
         var flag = force ? "-f " : "";
         var result = await _runner.RunAsync(_wslcExecutable, $"rmi {flag}{WslcCommandBuilder.Quote(idOrName)}", cancellationToken: cancellationToken);
+        return result.IsSuccess;
+    }
+
+    public async Task<bool> TagImageAsync(string source, string target, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(source) || string.IsNullOrWhiteSpace(target)) return false;
+
+        var result = await _runner.RunAsync(
+            _wslcExecutable,
+            $"tag {WslcCommandBuilder.Quote(source.Trim())} {WslcCommandBuilder.Quote(target.Trim())}",
+            cancellationToken: cancellationToken);
+
         return result.IsSuccess;
     }
 
