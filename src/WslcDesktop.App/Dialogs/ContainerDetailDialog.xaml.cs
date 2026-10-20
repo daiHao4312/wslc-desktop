@@ -606,8 +606,67 @@ public sealed partial class ContainerDetailDialog : ContentDialog
             CommandOutputScroller.ChangeView(null, CommandOutputScroller.ScrollableHeight, null, disableAnimation: true));
     }
 
+    /// <summary>
+    /// 把当前日志存成文本文件。
+    ///
+    /// 用界面缓冲（最多 1000 行）而不是重新拉一次：用户看到的就是他打算保存的那段，
+    /// 不需要再猜"为什么导出的和界面不一样"。
+    /// </summary>
+    private async void SaveLogs_Click(object sender, RoutedEventArgs e)
+    {
+        var content = _logBuffer.Count == 0 ? string.Empty : _logBuffer.Text;
+
+        if (content.Length == 0)
+        {
+            ShowNotice("当前没有日志内容可保存。");
+            return;
+        }
+
+        await SaveTextAsync($"container-{_container.Name}-logs", content, "日志");
+    }
+
+    private async void SaveExecOutput_Click(object sender, RoutedEventArgs e)
+    {
+        var content = _execBuffer.Count == 0 ? string.Empty : _execBuffer.Text;
+
+        if (content.Length == 0)
+        {
+            ShowNotice("当前没有命令输出可保存。");
+            return;
+        }
+
+        await SaveTextAsync($"container-{_container.Name}-exec", content, "命令输出");
+    }
+
+    private async Task SaveTextAsync(string prefix, string content, string what)
+    {
+        try
+        {
+            var name = TextExportHelper.SuggestName(prefix, ".txt");
+            var path = await TextExportHelper.SaveTextAsync(name, "文本文件", ".txt", content);
+
+            // null = 用户取消，不打扰
+            if (path is not null) ShowNotice($"{what}已保存：{path}");
+        }
+        catch (Exception ex)
+        {
+            ShowError($"保存失败：{ex.Message}");
+        }
+    }
+
+    /// <summary>非错误的提示（保存成功这类）：复用同一个 InfoBar，但要显式改 Severity。</summary>
+    private void ShowNotice(string message)
+    {
+        DialogErrorBar.Severity = InfoBarSeverity.Success;
+        DialogErrorBar.Title = "完成";
+        DialogErrorBar.Message = message;
+        DialogErrorBar.IsOpen = true;
+    }
+
     private void ShowError(string message)
     {
+        // Severity 会被 ShowNotice 改过：报错时必须复位，否则红条会变成"成功的绿条"
+        DialogErrorBar.Severity = InfoBarSeverity.Error;
         DialogErrorBar.Title = "操作失败";
         DialogErrorBar.Message = message;
         DialogErrorBar.IsOpen = true;

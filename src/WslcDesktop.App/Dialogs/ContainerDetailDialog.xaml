@@ -135,6 +135,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
@@ -169,9 +170,15 @@
                     Click="ClearLogs_Click"
                     Content="清空" />
 
+                <Button
+                    Grid.Column="4"
+                    Click="SaveLogs_Click"
+                    Content="保存…"
+                    ToolTipService.ToolTip="把当前日志存成文本文件（排查时直接发给别人）" />
+
                 <TextBlock
                     x:Name="LogStatusText"
-                    Grid.Column="4"
+                    Grid.Column="5"
                     VerticalAlignment="Center"
                     FontSize="12"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -218,6 +225,7 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBox
                         x:Name="CommandBox"
@@ -237,6 +245,11 @@
                         Content="停止"
                         IsEnabled="False"
                         ToolTipService.ToolTip="向容器内进程发送 SIGTERM；3 秒没退出自动 SIGKILL" />
+                    <Button
+                        Grid.Column="3"
+                        Click="SaveExecOutput_Click"
+                        Content="保存…"
+                        ToolTipService.ToolTip="把本次输出存成文本文件" />
                 </Grid>
                 <TextBlock
                     x:Name="CommandStatusText"
